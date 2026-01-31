@@ -49,6 +49,7 @@ from ..grid.grid_3d import Grid3D
 from ..data.wind_field import WindField
 from ..data.building_geometry import BuildingCollection
 from ..data.mock_generator import MockDataGenerator
+from ..data.stl_loader import STLLoader, STLMesh, MeshCollisionChecker
 from ..routing.cost_calculator import CostCalculator, WeightConfig
 from ..routing.dijkstra import DijkstraRouter
 from ..routing.naive_router import NaiveRouter
@@ -81,6 +82,9 @@ class ServerConfig:
     num_buildings: int = 4
     random_seed: int = 42
 
+    # STL file path (if provided, uses mesh instead of random buildings)
+    stl_path: Optional[str] = None
+
     # Simulation configuration
     frame_delay: float = 0.05  # Seconds between frame sends (controls playback speed)
     simulation_timestep: float = 0.1
@@ -108,6 +112,8 @@ class WebSocketServer:
         self.smoother: Optional[PathSmoother] = None
         self.metrics_calc: Optional[MetricsCalculator] = None
         self.flight_sim: Optional[FlightSimulator] = None
+        self.mesh: Optional[STLMesh] = None  # STL mesh for collision
+        self.collision_checker: Optional[MeshCollisionChecker] = None
         self._initialized = False
 
     def initialize(self) -> None:
@@ -117,26 +123,48 @@ class WebSocketServer:
 
         logger.info("Initializing server...")
 
-        bounds_min = Vector3(*self.config.bounds_min)
-        bounds_max = Vector3(*self.config.bounds_max)
-
-        # Generate mock data
-        logger.info("Generating mock data...")
         gen = MockDataGenerator(seed=self.config.random_seed)
 
-        self.buildings = gen.generate_buildings(
-            bounds_min, bounds_max,
-            num_buildings=self.config.num_buildings
-        )
-        logger.info(f"Created {len(self.buildings)} buildings")
+        # Check if using STL file for scene
+        if self.config.stl_path:
+            logger.info(f"Loading scene from STL: {self.config.stl_path}")
+            self.mesh, self.wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
+                self.config.stl_path,
+                wind_resolution=self.config.wind_resolution,
+                base_wind=self.config.base_wind,
+                flight_ceiling=50.0,
+                margin=50.0
+            )
+            self.buildings = BuildingCollection([])  # Empty - using mesh instead
+            self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
+            # Update config bounds to match mesh
+            self.config.bounds_min = (bounds_min.x, bounds_min.y, bounds_min.z)
+            self.config.bounds_max = (bounds_max.x, bounds_max.y, bounds_max.z)
+            logger.info(f"STL scene loaded, bounds: {bounds_min} to {bounds_max}")
+        else:
+            bounds_min = Vector3(*self.config.bounds_min)
+            bounds_max = Vector3(*self.config.bounds_max)
 
-        self.wind_field = gen.generate_wind_field(
-            bounds_min, bounds_max,
-            self.buildings,
-            resolution=self.config.wind_resolution,
-            base_wind=self.config.base_wind
-        )
-        logger.info(f"Created wind field: {self.wind_field.nx}x{self.wind_field.ny}x{self.wind_field.nz}")
+            # Generate mock data
+            logger.info("Generating mock data...")
+            self.buildings = gen.generate_buildings(
+                bounds_min, bounds_max,
+                num_buildings=self.config.num_buildings
+            )
+            logger.info(f"Created {len(self.buildings)} buildings")
+
+            self.wind_field = gen.generate_wind_field(
+                bounds_min, bounds_max,
+                self.buildings,
+                resolution=self.config.wind_resolution,
+                base_wind=self.config.base_wind
+            )
+
+        logger.info(f"Wind field: {self.wind_field.nx}x{self.wind_field.ny}x{self.wind_field.nz}")
+
+        # Ensure we have Vector3 bounds
+        bounds_min = Vector3(*self.config.bounds_min)
+        bounds_max = Vector3(*self.config.bounds_max)
 
         # Create grid
         logger.info("Creating grid...")
@@ -147,13 +175,19 @@ class WebSocketServer:
         logger.info("Setting up routers...")
 
         calc = CostCalculator(self.wind_field, WeightConfig.speed_priority())
-        calc.precompute_edge_costs(self.grid, self.buildings)
+        if self.mesh:
+            calc.precompute_edge_costs(self.grid, mesh=self.mesh)
+        else:
+            calc.precompute_edge_costs(self.grid, buildings=self.buildings)
         logger.info(f"Computed {calc.edge_count} wind-aware edges")
 
         self.wind_router = DijkstraRouter(self.grid, calc, capture_interval=50)
 
         self.naive_router = NaiveRouter(self.grid, capture_interval=50)
-        self.naive_router.precompute_valid_edges(self.buildings)
+        if self.mesh:
+            self.naive_router.precompute_valid_edges(mesh=self.mesh)
+        else:
+            self.naive_router.precompute_valid_edges(buildings=self.buildings)
 
         self.smoother = PathSmoother(points_per_segment=5)
         self.metrics_calc = MetricsCalculator(self.wind_field)
@@ -422,6 +456,11 @@ class WebSocketServer:
                 waypoints_reached=len(path)
             )
 
+        # Override turn rate for smoother animation - allow faster turns
+        # Original was 90 deg/s which caused 10+ frames to complete a 90° turn
+        # Now 360 deg/s allows instant turns (completes any turn in 1-2 frames)
+        sim_params.max_turn_rate = 360.0
+
         # Dynamic airspeed parameters - drone can boost power when needed
         base_airspeed = sim_params.max_airspeed  # Normal cruising speed (15 m/s)
         max_boost_airspeed = base_airspeed * 4.0  # Can boost up to 4x (60 m/s)
@@ -667,9 +706,15 @@ class WebSocketServer:
 
         # Check not inside a building
         pos_vec = Vector3(x, y, z)
-        for building in self.buildings:
-            if building.contains_point(pos_vec):
-                return f"{name} position is inside building {building.id}"
+
+        # Use mesh collision if available, otherwise use building AABBs
+        if self.collision_checker:
+            if self.collision_checker.point_in_building(pos_vec):
+                return f"{name} position is inside mesh geometry"
+        else:
+            for building in self.buildings:
+                if building.contains_point(pos_vec):
+                    return f"{name} position is inside building {building.id}"
 
         return None
 
@@ -731,18 +776,42 @@ class WebSocketServer:
         """Turn toward target with rate limit."""
         import math
 
-        dot = max(-1.0, min(1.0, current.dot(target)))
+        # Ensure inputs are normalized
+        current_norm = current.normalized()
+        target_norm = target.normalized()
+
+        # Handle invalid inputs
+        if current_norm.magnitude() < 0.1:
+            return target_norm if target_norm.magnitude() > 0.1 else Vector3(1, 0, 0)
+        if target_norm.magnitude() < 0.1:
+            return current_norm
+
+        dot = max(-1.0, min(1.0, current_norm.dot(target_norm)))
         angle = math.acos(dot)
 
         if angle < 1e-6:
-            return target
+            return target_norm
 
         max_rad = math.radians(max_angle)
         if angle <= max_rad:
-            return target
+            return target_norm
 
         t = max_rad / angle
-        result = current * (1 - t) + target * t
+        result = current_norm * (1 - t) + target_norm * t
+
+        # Safety check: if interpolation produces a near-zero vector (happens with ~180° turns)
+        # use a perpendicular vector to break the symmetry
+        if result.magnitude() < 0.1:
+            # Create a perpendicular vector by crossing with up or right
+            up = Vector3(0, 1, 0)
+            perp = current_norm.cross(up)
+            if perp.magnitude() < 0.1:
+                right = Vector3(1, 0, 0)
+                perp = current_norm.cross(right)
+            perp = perp.normalized()
+            # Turn toward the perpendicular direction first
+            result = current_norm * 0.7 + perp * 0.3
+
         return result.normalized()
 
     async def send_json(self, websocket: WebSocketServerProtocol, data: Dict) -> None:
@@ -787,7 +856,17 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
     parser.add_argument("--frame-delay", type=float, default=0.05, help="Delay between frames (seconds)")
+    parser.add_argument("--stl", type=str, default=None, help="Path to STL file for scene geometry")
+    parser.add_argument("--grid-resolution", type=float, default=10.0, help="Pathfinding grid resolution (meters)")
+    parser.add_argument("--wind-resolution", type=float, default=10.0, help="Wind field resolution (meters)")
 
     args = parser.parse_args()
 
-    run_server(host=args.host, port=args.port, frame_delay=args.frame_delay)
+    run_server(
+        host=args.host,
+        port=args.port,
+        frame_delay=args.frame_delay,
+        stl_path=args.stl,
+        grid_resolution=args.grid_resolution,
+        wind_resolution=args.wind_resolution
+    )

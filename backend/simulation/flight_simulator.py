@@ -201,10 +201,17 @@ class FlightSimulator:
             to_target = target - state.position
             distance_to_target = to_target.magnitude()
 
+            # Check if we reached the waypoint
             if distance_to_target < self.params.waypoint_threshold:
                 # Reached waypoint, move to next
                 state.target_waypoint_index += 1
-                continue
+                # Check if we've completed the path
+                if state.target_waypoint_index >= len(waypoints):
+                    break
+                # Update target to new waypoint and recalculate
+                target = waypoints[state.target_waypoint_index]
+                to_target = target - state.position
+                distance_to_target = to_target.magnitude()
 
             desired_direction = to_target.normalized()
 

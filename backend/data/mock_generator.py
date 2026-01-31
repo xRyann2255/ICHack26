@@ -419,6 +419,7 @@ class MockDataGenerator:
         mesh_top = mesh.max_bounds[1]  # Top of buildings
 
         # Generate wind for each cell
+        # Use altitude-based heuristics instead of expensive per-cell mesh queries
         for ix in range(nx):
             for iy in range(ny):
                 for iz in range(nz):
@@ -433,40 +434,25 @@ class MockDataGenerator:
                     altitude_multiplier = 1.0 + altitude * altitude_factor
                     wind = base_wind_vec * altitude_multiplier
 
-                    # Base turbulence (low)
-                    turbulence = 0.05
-
-                    # Check if near mesh surface
-                    # Sample nearby points to estimate distance to mesh
-                    in_mesh = mesh.point_inside(pos)
-                    if in_mesh:
-                        # Inside building - no wind
-                        wind = np.zeros(3, dtype=np.float32)
-                        turbulence = 0.0
+                    # Base turbulence (low at altitude, higher near ground)
+                    if altitude < 5:
+                        # Near ground - likely inside or near buildings
+                        wind = wind * 0.3
+                        turbulence = 0.5
+                    elif altitude < mesh_top * 0.5:
+                        # Low altitude, in building zone
+                        wind = wind * 0.6
+                        turbulence = 0.35
+                    elif altitude < mesh_top:
+                        # Mid altitude, some building effects
+                        wind = wind * 0.8
+                        turbulence = 0.2
+                    elif altitude < mesh_top * 1.5:
+                        # Just above buildings - some turbulence
+                        turbulence = 0.15
                     else:
-                        # Check proximity to mesh using nearby collision checks
-                        near_surface = False
-                        for offset in [
-                            Vector3(resolution, 0, 0),
-                            Vector3(-resolution, 0, 0),
-                            Vector3(0, -resolution, 0),  # Only check down
-                            Vector3(0, 0, resolution),
-                            Vector3(0, 0, -resolution),
-                        ]:
-                            test_pos = pos + offset
-                            if mesh.segment_intersects(pos, test_pos):
-                                near_surface = True
-                                break
-
-                        if near_surface:
-                            # Near building surface - add turbulence, reduce wind
-                            if altitude < mesh_top:
-                                wind = wind * 0.6
-                                turbulence = 0.4
-                            else:
-                                # Above buildings but near surface
-                                wind = wind * 0.8
-                                turbulence = 0.25
+                        # High altitude - clear air
+                        turbulence = 0.05
 
                     wind_data[ix, iy, iz] = wind
                     turbulence_data[ix, iy, iz] = min(1.0, turbulence)
