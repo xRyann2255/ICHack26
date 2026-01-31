@@ -4,6 +4,7 @@
  * Shows the WebSocket connection status and provides controls.
  */
 
+import { useState } from 'react';
 import { useScene } from '../context/SceneContext';
 import type { ConnectionStatus as ConnectionStatusType } from '../types/api';
 
@@ -26,6 +27,14 @@ const STATUS_LABELS: Record<ConnectionStatusType, string> = {
 };
 
 // ============================================================================
+// Default simulation endpoints
+// Scene bounds: x=[0,200], y=[0,80] (height), z=[0,200]
+// ============================================================================
+
+const DEFAULT_START: [number, number, number] = [180, 50, 180];
+const DEFAULT_END: [number, number, number] = [20, 50, 20];
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -39,10 +48,20 @@ export default function ConnectionStatus() {
     isDataLoaded,
     sceneData,
     windFieldData,
+    simulation,
+    startSimulation,
+    paths,
   } = useScene();
+
+  const [simStart] = useState<[number, number, number]>(DEFAULT_START);
+  const [simEnd] = useState<[number, number, number]>(DEFAULT_END);
 
   const statusColor = STATUS_COLORS[connectionStatus];
   const statusLabel = STATUS_LABELS[connectionStatus];
+
+  const handleStartSimulation = () => {
+    startSimulation(simStart, simEnd, 'both');
+  };
 
   return (
     <div style={styles.container}>
@@ -105,6 +124,58 @@ export default function ConnectionStatus() {
           </div>
         </div>
       )}
+
+      {/* Simulation controls */}
+      {isDataLoaded && (
+        <div style={styles.simSection}>
+          <div style={styles.sectionTitle}>Simulation</div>
+
+          <div style={styles.coordRow}>
+            <span style={styles.coordLabel}>Start:</span>
+            <span style={styles.coordValue}>[{simStart.join(', ')}]</span>
+          </div>
+          <div style={styles.coordRow}>
+            <span style={styles.coordLabel}>End:</span>
+            <span style={styles.coordValue}>[{simEnd.join(', ')}]</span>
+          </div>
+
+          <button
+            style={{ ...styles.button, ...styles.primaryButton, marginTop: 8, width: '100%' }}
+            onClick={handleStartSimulation}
+            disabled={simulation.status === 'loading' || simulation.status === 'simulating'}
+          >
+            {simulation.status === 'loading' ? 'Loading...' :
+             simulation.status === 'simulating' ? 'Simulating...' :
+             'Start Simulation'}
+          </button>
+
+          {/* Simulation status */}
+          {simulation.status !== 'idle' && (
+            <div style={styles.simStatus}>
+              <span style={styles.dataLabel}>Status:</span>
+              <span style={styles.simStatusValue}>{simulation.status}</span>
+            </div>
+          )}
+
+          {/* Path info */}
+          {paths && (
+            <div style={styles.pathInfo}>
+              {paths.naive && (
+                <div style={styles.pathRow}>
+                  <span style={{ ...styles.pathDot, backgroundColor: '#ff6b6b' }} />
+                  <span>Naive: {paths.naive.length} points</span>
+                </div>
+              )}
+              {paths.optimized && (
+                <div style={styles.pathRow}>
+                  <span style={{ ...styles.pathDot, backgroundColor: '#4ecdc4' }} />
+                  <span>Optimized: {paths.optimized.length} points</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -124,7 +195,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: 14,
-    minWidth: 200,
+    minWidth: 220,
+    maxWidth: 280,
     zIndex: 1000,
   },
   statusRow: {
@@ -188,5 +260,55 @@ const styles: Record<string, React.CSSProperties> = {
   dataNotLoaded: {
     color: '#888',
     fontStyle: 'italic',
+  },
+  simSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTop: '1px solid #333',
+  },
+  sectionTitle: {
+    fontWeight: 600,
+    marginBottom: 8,
+    color: '#4ecdc4',
+  },
+  coordRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+    fontSize: 11,
+  },
+  coordLabel: {
+    color: '#888',
+  },
+  coordValue: {
+    color: '#aaa',
+    fontFamily: 'monospace',
+  },
+  simStatus: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    fontSize: 12,
+  },
+  simStatusValue: {
+    color: '#ffd93d',
+    textTransform: 'capitalize',
+  },
+  pathInfo: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTop: '1px solid #333',
+  },
+  pathRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  pathDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
   },
 };

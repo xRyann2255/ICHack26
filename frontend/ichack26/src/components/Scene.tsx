@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { OrbitControls, Grid } from '@react-three/drei'
 import Terrain from './Terrain'
 import WindField from './WindField'
+import { DualPaths } from './FlightPath'
 import { useScene } from '../context/SceneContext'
 
 function LoadingBox() {
@@ -28,7 +29,7 @@ function Lighting() {
 }
 
 export default function Scene() {
-  const { windFieldData } = useScene()
+  const { windFieldData, paths } = useScene()
 
   return (
     <>
@@ -46,6 +47,18 @@ export default function Scene() {
           arrowScale={2.0}
           opacity={0.8}
           displayDownsample={2}
+        />
+      )}
+
+      {/* Flight paths */}
+      {paths && (
+        <DualPaths
+          naivePath={paths.naive}
+          optimizedPath={paths.optimized}
+          showNaive={true}
+          showOptimized={true}
+          lineWidth={4}
+          showWaypoints={false}
         />
       )}
 
