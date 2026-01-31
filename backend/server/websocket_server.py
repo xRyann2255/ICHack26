@@ -49,6 +49,7 @@ from ..grid.grid_3d import Grid3D
 from ..data.wind_field import WindField
 from ..data.building_geometry import BuildingCollection
 from ..data.mock_generator import MockDataGenerator
+from ..data.stl_loader import STLLoader
 from ..routing.cost_calculator import CostCalculator, WeightConfig
 from ..routing.dijkstra import DijkstraRouter
 from ..routing.naive_router import NaiveRouter
@@ -78,8 +79,9 @@ class ServerConfig:
     grid_resolution: float = 10.0
     wind_resolution: float = 5.0
     base_wind: tuple = (8.0, 0.0, 2.0)  # (vx, vy_vertical, vz)
-    num_buildings: int = 4
-    random_seed: int = 42
+
+    # STL file for geometry (optional)
+    stl_path: Optional[str] = None
 
     # Simulation configuration
     frame_delay: float = 0.05  # Seconds between frame sends (controls playback speed)
@@ -101,6 +103,7 @@ class WebSocketServer:
 
         self.config = config or ServerConfig()
         self.buildings: Optional[BuildingCollection] = None
+        self.mesh = None  # STL mesh for collision detection
         self.wind_field: Optional[WindField] = None
         self.grid: Optional[Grid3D] = None
         self.wind_router: Optional[DijkstraRouter] = None
@@ -120,21 +123,33 @@ class WebSocketServer:
         bounds_min = Vector3(*self.config.bounds_min)
         bounds_max = Vector3(*self.config.bounds_max)
 
+        # Initialize empty buildings collection (no random buildings)
+        self.buildings = BuildingCollection([])
+
         # Generate mock data
         logger.info("Generating mock data...")
-        gen = MockDataGenerator(seed=self.config.random_seed)
+        gen = MockDataGenerator()
 
-        self.buildings = gen.generate_buildings(
-            bounds_min, bounds_max,
-            num_buildings=self.config.num_buildings
-        )
-        logger.info(f"Created {len(self.buildings)} buildings")
+        # Load STL mesh if provided for geometry-aware wind effects
+        if self.config.stl_path:
+            logger.info(f"Loading STL mesh from {self.config.stl_path}...")
+            try:
+                self.mesh = STLLoader.load_stl(
+                    self.config.stl_path,
+                    convert_coords=True,
+                    center_xy=True,
+                    ground_at_zero=True
+                )
+                logger.info(f"Loaded STL mesh with {len(self.mesh.triangles)} triangles")
+            except Exception as e:
+                logger.warning(f"Failed to load STL: {e}, continuing without geometry")
+                self.mesh = None
 
         self.wind_field = gen.generate_wind_field(
             bounds_min, bounds_max,
-            self.buildings,
             resolution=self.config.wind_resolution,
-            base_wind=self.config.base_wind
+            base_wind=self.config.base_wind,
+            mesh=self.mesh
         )
         logger.info(f"Created wind field: {self.wind_field.nx}x{self.wind_field.ny}x{self.wind_field.nz}")
 
@@ -156,6 +171,7 @@ class WebSocketServer:
         self.naive_router.precompute_valid_edges(self.buildings)
 
         self.smoother = PathSmoother(points_per_segment=5)
+        
         self.metrics_calc = MetricsCalculator(self.wind_field)
 
         self.flight_sim = FlightSimulator(
@@ -178,14 +194,6 @@ class WebSocketServer:
             },
             "grid_resolution": self.config.grid_resolution,
             "wind_base_direction": list(self.config.base_wind),
-            "buildings": [
-                {
-                    "id": b.id,
-                    "min": b.min_corner.to_list(),
-                    "max": b.max_corner.to_list(),
-                }
-                for b in self.buildings
-            ],
             "wind_field_shape": [self.wind_field.nx, self.wind_field.ny, self.wind_field.nz],
         }
 
@@ -645,7 +653,7 @@ class WebSocketServer:
 
     def _validate_position(self, pos: List[float], name: str) -> Optional[str]:
         """
-        Validate a position is within bounds and not inside a building.
+        Validate a position is within bounds and not inside geometry.
 
         Returns:
             Error message if invalid, None if valid.
@@ -665,11 +673,18 @@ class WebSocketServer:
         if not (min_b[2] <= z <= max_b[2]):
             return f"{name} z={z} is outside bounds [{min_b[2]}, {max_b[2]}]"
 
-        # Check not inside a building
         pos_vec = Vector3(x, y, z)
-        for building in self.buildings:
-            if building.contains_point(pos_vec):
-                return f"{name} position is inside building {building.id}"
+
+        # Check not inside a building (if any buildings exist)
+        if self.buildings:
+            for building in self.buildings:
+                if building.contains_point(pos_vec):
+                    return f"{name} position is inside building {building.id}"
+
+        # Check not inside STL mesh (if loaded)
+        if self.mesh is not None:
+            if self.mesh.point_inside(pos_vec):
+                return f"{name} position is inside mesh geometry"
 
         return None
 
@@ -787,7 +802,8 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
     parser.add_argument("--frame-delay", type=float, default=0.05, help="Delay between frames (seconds)")
+    parser.add_argument("--stl", type=str, default=None, help="Path to STL file for geometry-aware wind")
 
     args = parser.parse_args()
 
-    run_server(host=args.host, port=args.port, frame_delay=args.frame_delay)
+    run_server(host=args.host, port=args.port, frame_delay=args.frame_delay, stl_path=args.stl)
