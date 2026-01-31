@@ -1,6 +1,7 @@
 import { Canvas } from '@react-three/fiber'
 import Scene from './components/Scene'
 import ConnectionStatus from './components/ConnectionStatus'
+import MetricsPanel from './components/MetricsPanel'
 import { SceneProvider } from './context/SceneContext'
 import './App.css'
 
@@ -10,6 +11,9 @@ function App() {
       <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }}>
         {/* WebSocket connection status overlay */}
         <ConnectionStatus />
+
+        {/* Metrics comparison panel (shows when simulation completes) */}
+        <MetricsPanel />
 
         {/* 3D Canvas */}
         <Canvas
