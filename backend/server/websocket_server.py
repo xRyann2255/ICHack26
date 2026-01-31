@@ -15,6 +15,8 @@ Protocol:
 Usage:
 ------
     python -m backend.server.websocket_server --port 8765
+
+    Uses CFD wind data from internal.vtu by default. Use --vtu none to disable.
 """
 
 import asyncio
@@ -83,6 +85,9 @@ class ServerConfig:
     # STL file path - defaults to southken.stl in project root
     stl_path: str = "southken.stl"
 
+    # VTU file path for CFD wind data (defaults to internal.vtu, set to None for mock wind)
+    vtu_path: Optional[str] = "internal.vtu"
+
     # Simulation configuration
     frame_delay: float = 0.05  # Seconds between frame sends (controls playback speed)
     simulation_timestep: float = 0.1
@@ -137,14 +142,33 @@ class WebSocketServer:
         if not os.path.exists(stl_path):
             raise FileNotFoundError(f"STL file not found: {stl_path}. The southken.stl file is required.")
 
+        # Resolve VTU path if provided
+        vtu_path = self.config.vtu_path
+        if vtu_path and not os.path.isabs(vtu_path):
+            # Try relative to current directory first
+            if not os.path.exists(vtu_path):
+                # Try relative to project root
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(os.path.dirname(script_dir))
+                vtu_path = os.path.join(project_root, self.config.vtu_path)
+            if not os.path.exists(vtu_path):
+                logger.warning(f"VTU file not found: {vtu_path}, using mock wind data")
+                vtu_path = None
+
         # Load scene from STL file
         logger.info(f"Loading scene from STL: {stl_path}")
+        if vtu_path:
+            logger.info(f"Using CFD wind data from VTU: {vtu_path}")
+        else:
+            logger.info("Using mock wind data (no VTU file specified)")
+
         self.mesh, self.wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
             stl_path,
             wind_resolution=self.config.wind_resolution,
             base_wind=self.config.base_wind,
             flight_ceiling=50.0,
-            margin=50.0
+            margin=50.0,
+            vtu_path=vtu_path
         )
         self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
         # Update config bounds to match mesh
@@ -1114,9 +1138,19 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
     parser.add_argument("--frame-delay", type=float, default=0.05, help="Delay between frames (seconds)")
     parser.add_argument("--stl", type=str, default="southken.stl", help="Path to STL file for scene geometry (default: southken.stl)")
+    parser.add_argument("--vtu", type=str, default="internal.vtu", help="Path to VTU file for CFD wind data (default: internal.vtu, use 'none' for mock wind)")
     parser.add_argument("--grid-resolution", type=float, default=20.0, help="Pathfinding grid resolution in meters (default: 20, smaller = finer paths but slower)")
     parser.add_argument("--wind-resolution", type=float, default=10.0, help="Wind field resolution in meters (default: 10)")
 
     args = parser.parse_args()
 
-    run_server(host=args.host, port=args.port, frame_delay=args.frame_delay, stl_path=args.stl)
+    # Handle 'none' as special value to disable VTU loading
+    vtu_path = args.vtu if args.vtu.lower() != 'none' else None
+
+    run_server(
+        host=args.host,
+        port=args.port,
+        frame_delay=args.frame_delay,
+        stl_path=args.stl,
+        vtu_path=vtu_path
+    )

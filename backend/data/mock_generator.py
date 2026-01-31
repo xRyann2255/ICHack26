@@ -8,6 +8,7 @@ from ..grid.node import Vector3
 from .building_geometry import Building, BuildingCollection
 from .wind_field import WindField
 from .stl_loader import STLLoader, STLMesh
+from .vtu_loader import VTULoader
 
 
 class MockDataGenerator:
@@ -189,20 +190,23 @@ class MockDataGenerator:
         wind_resolution: float = 10.0,
         base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0),
         flight_ceiling: float = 100.0,
-        margin: float = 50.0
+        margin: float = 50.0,
+        vtu_path: Optional[str] = None
     ) -> Tuple[STLMesh, WindField, Tuple[Vector3, Vector3]]:
         """
-        Load scene from STL file and generate wind field.
+        Load scene from STL file and wind field from VTU or generate mock.
 
         The STL mesh is used directly for collision detection (more accurate
-        than AABB approximations). Wind field is generated based on mesh bounds.
+        than AABB approximations). Wind field is loaded from VTU file if provided,
+        otherwise generated based on mesh bounds.
 
         Args:
             stl_path: Path to STL file
             wind_resolution: Wind field grid resolution in meters
-            base_wind: Base wind velocity (vx, vy_vertical, vz)
+            base_wind: Base wind velocity (vx, vy_vertical, vz) - used for mock only
             flight_ceiling: Maximum flight altitude above mesh top
             margin: Margin around mesh bounds for scene
+            vtu_path: Optional path to VTU file with CFD wind data
 
         Returns:
             Tuple of (STLMesh, WindField, (bounds_min, bounds_max))
@@ -230,15 +234,35 @@ class MockDataGenerator:
 
         print(f"Scene bounds: {bounds_min} to {bounds_max}")
 
-        # Generate wind field for the scene
-        # Note: We can't easily model building effects on wind without AABBs,
-        # so we use a simplified model with altitude-based wind increase
-        print(f"Generating wind field (resolution={wind_resolution}m)...")
-        wind_field = self._generate_wind_field_for_mesh(
-            bounds_min, bounds_max, mesh,
-            resolution=wind_resolution,
-            base_wind=base_wind
-        )
+        # Load wind field from VTU if provided, otherwise generate mock
+        if vtu_path:
+            print(f"Loading CFD wind field from {vtu_path}...")
+            # The STL mesh is centered horizontally (center_xy=True), so the
+            # scene center is at (0, 0) in XZ plane. We need to align the VTU
+            # data with this centered coordinate system.
+            offset = VTULoader.compute_alignment_offset(
+                vtu_path,
+                target_center_x=0.0,  # Mesh is centered at X=0
+                target_center_z=0.0,  # Mesh is centered at Z=0
+                convert_coords=True
+            )
+            wind_field = VTULoader.load_vtu(
+                vtu_path,
+                bounds_min,
+                bounds_max,
+                resolution=wind_resolution,
+                convert_coords=True,
+                offset=offset
+            )
+        else:
+            # Generate mock wind field
+            print(f"Generating mock wind field (resolution={wind_resolution}m)...")
+            wind_field = self._generate_wind_field_for_mesh(
+                bounds_min, bounds_max, mesh,
+                resolution=wind_resolution,
+                base_wind=base_wind
+            )
+
         print(f"Wind field: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
 
         return mesh, wind_field, (bounds_min, bounds_max)
