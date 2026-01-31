@@ -335,6 +335,7 @@ class CostCalculator:
         grid: Grid3D,
         buildings: Optional['BuildingCollection'] = None,
         mesh: Optional['STLMesh'] = None,
+        collision_checker: Optional['MeshCollisionChecker'] = None,
         progress_callback: Optional[callable] = None
     ) -> Dict[Tuple[int, int], float]:
         """
@@ -344,35 +345,50 @@ class CostCalculator:
             grid: 3D grid with nodes
             buildings: Buildings for collision checking (AABB-based)
             mesh: STL mesh for collision checking (triangle-based, more accurate)
+            collision_checker: Pre-built collision checker (preferred, avoids rebuilding voxel grid)
             progress_callback: Called with (current, total) for progress
 
         Returns:
             Dictionary mapping (node_a_id, node_b_id) to cost
 
-        Note: If both buildings and mesh are provided, mesh takes precedence.
+        Note: If collision_checker is provided, it takes precedence over mesh/buildings.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         from ..grid.collision import CollisionChecker
         from ..data.stl_loader import MeshCollisionChecker
 
-        collision_checker = None
-        if mesh:
-            collision_checker = MeshCollisionChecker(mesh)
-        elif buildings:
-            collision_checker = CollisionChecker(buildings)
+        # Use provided collision checker, or create one
+        if collision_checker is None:
+            if mesh:
+                logger.info("Building collision checker from mesh...")
+                collision_checker = MeshCollisionChecker(mesh)
+            elif buildings:
+                collision_checker = CollisionChecker(buildings)
 
         self._edge_costs = {}
         valid_nodes = list(grid.valid_nodes())
         total_nodes = len(valid_nodes)
 
+        logger.info(f"Pre-computing edge costs for {total_nodes} nodes...")
+        last_log_pct = -10
+
         for i, node in enumerate(valid_nodes):
             if progress_callback and i % 100 == 0:
                 progress_callback(i, total_nodes)
+
+            # Log progress every 10%
+            pct = (i * 100) // total_nodes
+            if pct >= last_log_pct + 10:
+                logger.info(f"  Edge cost progress: {pct}% ({i}/{total_nodes} nodes, {len(self._edge_costs)} edges)")
+                last_log_pct = pct
 
             for neighbor in grid.get_neighbors(node):
                 # Skip if edge already computed (undirected check)
                 # Note: We compute both directions because costs are direction-dependent!
 
-                # Check collision if buildings provided
+                # Check collision if collision checker provided
                 if collision_checker:
                     if not collision_checker.node_edge_valid(node, neighbor):
                         continue
@@ -384,6 +400,7 @@ class CostCalculator:
         if progress_callback:
             progress_callback(total_nodes, total_nodes)
 
+        logger.info(f"Edge cost computation complete: {len(self._edge_costs)} valid edges")
         return self._edge_costs
 
     def get_edge_cost(self, node_a_id: int, node_b_id: int) -> Optional[float]:
