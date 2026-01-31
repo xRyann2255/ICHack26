@@ -23,28 +23,45 @@ export interface MetricsOverlayProps {
 // Helper Functions
 // ============================================================================
 
-function getWindIndicator(frame: FrameData): { icon: string; label: string; color: string } {
-  if (!frame.heading || !frame.wind) return { icon: '○', label: 'Calm', color: '#888' }
+function getWindIndicator(frame: FrameData): { angle: number; speed: number; label: string; color: string } {
+  if (!frame.wind) return { angle: 0, speed: 0, label: 'Calm', color: '#888' }
 
-  const headingMag = Math.sqrt(
-    frame.heading[0] ** 2 + frame.heading[1] ** 2 + frame.heading[2] ** 2
-  )
   const windMag = Math.sqrt(
     frame.wind[0] ** 2 + frame.wind[1] ** 2 + frame.wind[2] ** 2
   )
 
-  if (windMag < 0.5) return { icon: '○', label: 'Calm', color: '#6bcb77' }
+  if (windMag < 0.5) return { angle: 0, speed: windMag, label: 'Calm', color: '#6bcb77' }
 
-  const dot =
-    frame.heading[0] * frame.wind[0] +
-    frame.heading[1] * frame.wind[1] +
-    frame.heading[2] * frame.wind[2]
+  // Calculate wind angle in XY plane (0 = East, 90 = North)
+  // Negate to show where wind is coming FROM (opposite of velocity)
+  const angle = Math.atan2(-frame.wind[1], -frame.wind[0]) * (180 / Math.PI)
 
-  const alignment = headingMag > 0.1 ? dot / (headingMag * windMag) : 0
+  // Determine color based on alignment with heading
+  let color = '#ffd93d' // Default crosswind
+  let label = 'Crosswind'
 
-  if (alignment > 0.5) return { icon: '↓', label: 'Tailwind', color: '#6bcb77' }
-  if (alignment > -0.3) return { icon: '→', label: 'Crosswind', color: '#ffd93d' }
-  return { icon: '↑', label: 'Headwind', color: '#ff6b6b' }
+  if (frame.heading) {
+    const headingMag = Math.sqrt(
+      frame.heading[0] ** 2 + frame.heading[1] ** 2 + frame.heading[2] ** 2
+    )
+    if (headingMag > 0.1) {
+      const dot =
+        frame.heading[0] * frame.wind[0] +
+        frame.heading[1] * frame.wind[1] +
+        frame.heading[2] * frame.wind[2]
+      const alignment = dot / (headingMag * windMag)
+
+      if (alignment > 0.5) {
+        color = '#6bcb77'
+        label = 'Tailwind'
+      } else if (alignment < -0.3) {
+        color = '#ff6b6b'
+        label = 'Headwind'
+      }
+    }
+  }
+
+  return { angle, speed: windMag, label, color }
 }
 
 function getEffortColor(effort: number): string {
@@ -133,8 +150,27 @@ export default function MetricsOverlay({
 
         {/* Wind indicator */}
         <div style={styles.statBlock}>
-          <div style={{ ...styles.windIcon, color: wind.color }}>
-            {wind.icon}
+          <div style={styles.windIndicator}>
+            <svg width="40" height="40" viewBox="0 0 40 40">
+              {/* Background circle */}
+              <circle cx="20" cy="20" r="18" fill="none" stroke="#333" strokeWidth="2" />
+              {/* Wind arrow - rotates based on wind direction */}
+              <g
+                style={{
+                  transform: `rotate(${wind.angle - 90}deg)`,
+                  transformOrigin: '20px 20px',
+                  transition: 'transform 0.15s ease-out'
+                }}
+              >
+                <line x1="20" y1="32" x2="20" y2="8" stroke={wind.color} strokeWidth="3" strokeLinecap="round" />
+                <polygon points="20,6 14,14 26,14" fill={wind.color} />
+              </g>
+              {/* Center dot */}
+              <circle cx="20" cy="20" r="3" fill={wind.color} />
+            </svg>
+            <div style={{ fontSize: 10, color: wind.color, marginTop: 2 }}>
+              {wind.speed.toFixed(1)} m/s
+            </div>
           </div>
           <div style={{ ...styles.statLabel, color: wind.color }}>
             {wind.label}
@@ -210,10 +246,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'center',
   },
-  windIcon: {
-    fontSize: 28,
-    fontWeight: 700,
-    lineHeight: 1,
+  windIndicator: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
   },
   progressSection: {
     marginTop: 12,

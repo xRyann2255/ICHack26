@@ -1,15 +1,13 @@
 /**
  * Wind Field Visualization Component
  *
- * Renders wind vectors as 3D arrows using instanced meshes for performance.
- * Colors indicate wind speed (blue=slow, red=fast) or turbulence.
+ * Renders wind as streamlines with arrowheads showing flow direction.
+ * Colors indicate velocity magnitude using a blue-to-red heatmap.
  */
 
 import { useRef, useMemo, useEffect } from 'react'
-import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { WindFieldData } from '../types/api'
-import { indexToPosition } from '../types/api'
+import type { WindFieldData, Bounds } from '../types/api'
 
 // ============================================================================
 // Types
@@ -18,42 +16,368 @@ import { indexToPosition } from '../types/api'
 export interface WindFieldProps {
   data: WindFieldData
   visible?: boolean
-  colorMode?: 'speed' | 'turbulence'
-  arrowScale?: number
+  /** Number of streamlines to generate */
+  streamlineCount?: number
+  /** Number of integration steps per streamline */
+  integrationSteps?: number
+  /** Step size for integration (in meters) */
+  stepSize?: number
+  /** Opacity of the streamlines */
   opacity?: number
-  animateFlow?: boolean
-  /** Only show every Nth arrow for performance */
-  displayDownsample?: number
+  /** Size of arrow heads */
+  arrowSize?: number
+  /** Number of curve subdivisions per segment for smoothness */
+  curveSegments?: number
+}
+
+interface StreamlineData {
+  points: THREE.Vector3[]
+  velocities: number[]
+  direction: THREE.Vector3
 }
 
 // ============================================================================
 // Color Utilities
 // ============================================================================
 
-/** Interpolate between colors based on value 0-1 */
-function getSpeedColor(normalizedSpeed: number): THREE.Color {
-  // Blue (slow) -> Cyan -> Green -> Yellow -> Red (fast)
+/**
+ * Get heatmap color from blue (low) to red (high)
+ * Smooth gradient through the spectrum
+ */
+function velocityToColor(normalizedVelocity: number): THREE.Color {
+  const t = Math.max(0, Math.min(1, normalizedVelocity))
   const color = new THREE.Color()
-  if (normalizedSpeed < 0.25) {
-    color.setHSL(0.6, 0.8, 0.5) // Blue
-  } else if (normalizedSpeed < 0.5) {
-    color.setHSL(0.5, 0.8, 0.5) // Cyan
-  } else if (normalizedSpeed < 0.75) {
-    color.setHSL(0.3, 0.8, 0.5) // Green-Yellow
-  } else {
-    color.setHSL(0.0, 0.8, 0.5) // Red
+
+  // HSL interpolation: Blue (0.66) -> Cyan -> Green -> Yellow -> Red (0.0)
+  const hue = 0.66 * (1 - t)
+  const saturation = 0.9
+  const lightness = 0.55
+
+  color.setHSL(hue, saturation, lightness)
+  return color
+}
+
+// ============================================================================
+// Wind Field Sampling (Trilinear Interpolation)
+// ============================================================================
+
+function sampleWindField(
+  position: THREE.Vector3,
+  windVectors: [number, number, number][],
+  shape: [number, number, number],
+  bounds: Bounds,
+  resolution: number
+): THREE.Vector3 {
+  const [nx, ny, nz] = shape
+
+  const gx = (position.x - bounds.min[0]) / resolution
+  const gy = (position.y - bounds.min[1]) / resolution
+  const gz = (position.z - bounds.min[2]) / resolution
+
+  const x0 = Math.max(0, Math.min(nx - 2, Math.floor(gx)))
+  const y0 = Math.max(0, Math.min(ny - 2, Math.floor(gy)))
+  const z0 = Math.max(0, Math.min(nz - 2, Math.floor(gz)))
+
+  const x1 = x0 + 1
+  const y1 = y0 + 1
+  const z1 = z0 + 1
+
+  const tx = Math.max(0, Math.min(1, gx - x0))
+  const ty = Math.max(0, Math.min(1, gy - y0))
+  const tz = Math.max(0, Math.min(1, gz - z0))
+
+  const getIndex = (ix: number, iy: number, iz: number) => ix + iy * nx + iz * nx * ny
+
+  const getVec = (idx: number): THREE.Vector3 => {
+    if (idx >= 0 && idx < windVectors.length) {
+      const v = windVectors[idx]
+      return new THREE.Vector3(v[0], v[1], v[2])
+    }
+    return new THREE.Vector3(0, 0, 0)
   }
-  return color
+
+  const v000 = getVec(getIndex(x0, y0, z0))
+  const v100 = getVec(getIndex(x1, y0, z0))
+  const v010 = getVec(getIndex(x0, y1, z0))
+  const v110 = getVec(getIndex(x1, y1, z0))
+  const v001 = getVec(getIndex(x0, y0, z1))
+  const v101 = getVec(getIndex(x1, y0, z1))
+  const v011 = getVec(getIndex(x0, y1, z1))
+  const v111 = getVec(getIndex(x1, y1, z1))
+
+  const c00 = v000.clone().lerp(v100, tx)
+  const c10 = v010.clone().lerp(v110, tx)
+  const c01 = v001.clone().lerp(v101, tx)
+  const c11 = v011.clone().lerp(v111, tx)
+
+  const c0 = c00.clone().lerp(c10, ty)
+  const c1 = c01.clone().lerp(c11, ty)
+
+  return c0.clone().lerp(c1, tz)
 }
 
-function getTurbulenceColor(turbulence: number): THREE.Color {
-  // Green (calm) -> Yellow -> Orange -> Red (turbulent)
-  const color = new THREE.Color()
-  const hue = 0.33 - turbulence * 0.33 // Green to Red
-  color.setHSL(Math.max(0, hue), 0.8, 0.5)
-  return color
+function isInBounds(position: THREE.Vector3, bounds: Bounds, margin: number = 0): boolean {
+  return (
+    position.x >= bounds.min[0] - margin && position.x <= bounds.max[0] + margin &&
+    position.y >= bounds.min[1] - margin && position.y <= bounds.max[1] + margin &&
+    position.z >= bounds.min[2] - margin && position.z <= bounds.max[2] + margin
+  )
 }
 
+// ============================================================================
+// Streamline Generation
+// ============================================================================
+
+/**
+ * Generate seed points on a regular 3D grid for consistent coverage
+ */
+function generateGridSeeds(bounds: Bounds, countPerAxis: number): THREE.Vector3[] {
+  const seeds: THREE.Vector3[] = []
+  const [minX, minY, minZ] = bounds.min
+  const [maxX, maxY, maxZ] = bounds.max
+
+  const stepX = (maxX - minX) / countPerAxis
+  const stepY = (maxY - minY) / countPerAxis
+  const stepZ = (maxZ - minZ) / Math.max(1, Math.floor(countPerAxis / 2))
+
+  for (let iz = 0; iz <= Math.floor(countPerAxis / 2); iz++) {
+    for (let iy = 0; iy <= countPerAxis; iy++) {
+      for (let ix = 0; ix <= countPerAxis; ix++) {
+        // Add slight jitter to avoid perfectly aligned lines
+        const jitterX = (Math.random() - 0.5) * stepX * 0.3
+        const jitterY = (Math.random() - 0.5) * stepY * 0.3
+        const jitterZ = (Math.random() - 0.5) * stepZ * 0.3
+
+        const x = minX + ix * stepX + jitterX
+        const y = minY + iy * stepY + jitterY
+        const z = minZ + iz * stepZ + jitterZ
+
+        seeds.push(new THREE.Vector3(
+          Math.max(minX, Math.min(maxX, x)),
+          Math.max(minY, Math.min(maxY, y)),
+          Math.max(minZ, Math.min(maxZ, z))
+        ))
+      }
+    }
+  }
+
+  return seeds
+}
+
+/**
+ * Advect a particle through the wind field using RK4 integration
+ */
+function advectStreamline(
+  seed: THREE.Vector3,
+  windVectors: [number, number, number][],
+  shape: [number, number, number],
+  bounds: Bounds,
+  resolution: number,
+  steps: number,
+  stepSize: number,
+  maxSpeed: number
+): StreamlineData | null {
+  const points: THREE.Vector3[] = []
+  const velocities: number[] = []
+  const position = seed.clone()
+  let lastDirection = new THREE.Vector3()
+
+  for (let i = 0; i < steps; i++) {
+    if (!isInBounds(position, bounds)) break
+
+    // RK4 integration
+    const k1 = sampleWindField(position, windVectors, shape, bounds, resolution)
+    const p2 = position.clone().add(k1.clone().multiplyScalar(stepSize * 0.5))
+    const k2 = sampleWindField(p2, windVectors, shape, bounds, resolution)
+    const p3 = position.clone().add(k2.clone().multiplyScalar(stepSize * 0.5))
+    const k3 = sampleWindField(p3, windVectors, shape, bounds, resolution)
+    const p4 = position.clone().add(k3.clone().multiplyScalar(stepSize))
+    const k4 = sampleWindField(p4, windVectors, shape, bounds, resolution)
+
+    const velocity = k1.clone()
+      .add(k2.clone().multiplyScalar(2))
+      .add(k3.clone().multiplyScalar(2))
+      .add(k4)
+      .multiplyScalar(1/6)
+
+    const speed = velocity.length()
+    if (speed < 0.001) break
+
+    points.push(position.clone())
+    velocities.push(speed / maxSpeed)
+    lastDirection.copy(velocity).normalize()
+
+    velocity.normalize().multiplyScalar(stepSize)
+    position.add(velocity)
+  }
+
+  if (points.length < 2) return null
+
+  return { points, velocities, direction: lastDirection }
+}
+
+// ============================================================================
+// Streamline Rendering Components
+// ============================================================================
+
+interface StreamlineLinesProps {
+  streamlines: StreamlineData[]
+  opacity: number
+  curveSegments?: number
+}
+
+/**
+ * Render streamlines as smooth CatmullRom spline curves.
+ * This creates flowing, curved lines that smoothly follow wind direction changes.
+ */
+function StreamlineLines({ streamlines, opacity, curveSegments = 5 }: StreamlineLinesProps) {
+  const geometries = useMemo(() => {
+    return streamlines.map(({ points, velocities }) => {
+      const geo = new THREE.BufferGeometry()
+
+      // Need at least 2 points for a curve
+      if (points.length < 2) {
+        return geo
+      }
+
+      // Create a smooth CatmullRom spline through the advected points
+      const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5)
+
+      // Sample more points along the curve for smooth rendering
+      const numSamples = Math.max(points.length * curveSegments, 10)
+      const sampledPoints = curve.getPoints(numSamples)
+
+      const positions: number[] = []
+      const colors: number[] = []
+
+      for (let i = 0; i < sampledPoints.length; i++) {
+        const p = sampledPoints[i]
+        positions.push(p.x, p.y, p.z)
+
+        // Interpolate velocity for color based on position along curve
+        const t = i / (sampledPoints.length - 1)
+        const velocityIndex = t * (velocities.length - 1)
+        const lowIdx = Math.floor(velocityIndex)
+        const highIdx = Math.min(lowIdx + 1, velocities.length - 1)
+        const frac = velocityIndex - lowIdx
+        const interpolatedVelocity = velocities[lowIdx] * (1 - frac) + velocities[highIdx] * frac
+
+        const color = velocityToColor(interpolatedVelocity)
+        colors.push(color.r, color.g, color.b)
+      }
+
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+      return geo
+    })
+  }, [streamlines, curveSegments])
+
+  return (
+    <>
+      {geometries.map((geo, i) => (
+        <line key={`line-${i}`} geometry={geo}>
+          <lineBasicMaterial
+            vertexColors
+            transparent
+            opacity={opacity}
+            linewidth={1}
+          />
+        </line>
+      ))}
+    </>
+  )
+}
+
+// ============================================================================
+// Arrow Heads using Instanced Mesh
+// ============================================================================
+
+interface ArrowHeadsProps {
+  streamlines: StreamlineData[]
+  arrowSize: number
+  opacity: number
+}
+
+function ArrowHeads({ streamlines, arrowSize, opacity }: ArrowHeadsProps) {
+  const meshRef = useRef<THREE.InstancedMesh>(null)
+
+  const { count, matrices, colors } = useMemo(() => {
+    const numArrows = streamlines.length
+    const matricesArray = new Float32Array(numArrows * 16)
+    const colorsArray = new Float32Array(numArrows * 3)
+
+    const tempMatrix = new THREE.Matrix4()
+    const tempPosition = new THREE.Vector3()
+    const tempQuaternion = new THREE.Quaternion()
+    const tempScale = new THREE.Vector3(arrowSize, arrowSize * 1.5, arrowSize)
+    const upVector = new THREE.Vector3(0, 1, 0)
+
+    streamlines.forEach((streamline, i) => {
+      const { points, velocities, direction } = streamline
+      const endPoint = points[points.length - 1]
+      const endVelocity = velocities[velocities.length - 1]
+
+      tempPosition.copy(endPoint)
+
+      // Rotate cone to point in wind direction
+      if (direction.length() > 0.01) {
+        tempQuaternion.setFromUnitVectors(upVector, direction)
+      } else {
+        tempQuaternion.identity()
+      }
+
+      tempMatrix.compose(tempPosition, tempQuaternion, tempScale)
+      tempMatrix.toArray(matricesArray, i * 16)
+
+      const color = velocityToColor(endVelocity)
+      colorsArray[i * 3] = color.r
+      colorsArray[i * 3 + 1] = color.g
+      colorsArray[i * 3 + 2] = color.b
+    })
+
+    return { count: numArrows, matrices: matricesArray, colors: colorsArray }
+  }, [streamlines, arrowSize])
+
+  // Create cone geometry for arrows
+  const coneGeometry = useMemo(() => {
+    const geo = new THREE.ConeGeometry(0.4, 1.2, 6)
+    geo.translate(0, 0.6, 0) // Move pivot to base
+    return geo
+  }, [])
+
+  // Apply matrices and colors to instanced mesh
+  useEffect(() => {
+    if (!meshRef.current || count === 0) return
+
+    const mesh = meshRef.current
+    const tempMatrix = new THREE.Matrix4()
+
+    for (let i = 0; i < count; i++) {
+      tempMatrix.fromArray(matrices, i * 16)
+      mesh.setMatrixAt(i, tempMatrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+
+    const colorAttr = new THREE.InstancedBufferAttribute(colors, 3)
+    mesh.instanceColor = colorAttr
+  }, [count, matrices, colors])
+
+  if (count === 0) return null
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[coneGeometry, undefined, count]}
+      frustumCulled={false}
+    >
+      <meshBasicMaterial
+        vertexColors
+        transparent
+        opacity={opacity}
+      />
+    </instancedMesh>
+  )
+}
 
 // ============================================================================
 // Wind Field Component
@@ -62,149 +386,59 @@ function getTurbulenceColor(turbulence: number): THREE.Color {
 export default function WindField({
   data,
   visible = true,
-  colorMode = 'speed',
-  arrowScale = 1.0,
-  opacity = 0.7,
-  animateFlow = false,
-  displayDownsample = 1,
+  streamlineCount = 400,
+  integrationSteps = 25,
+  stepSize = 5.0,
+  opacity = 0.85,
+  arrowSize = 3.0,
+  curveSegments = 5,
 }: WindFieldProps) {
-  const meshRef = useRef<THREE.InstancedMesh>(null)
-  const timeRef = useRef(0)
 
-  // Process wind data and compute instances
-  const { count, matrices, colors } = useMemo(() => {
-    const { wind_vectors, turbulence, shape, bounds, resolution } = data
+  // Generate all streamlines
+  const streamlines = useMemo(() => {
+    const { wind_vectors, shape, bounds, resolution } = data
 
     // Calculate max wind speed for normalization
-    let maxSpd = 0
+    let maxSpeed = 0
     for (const vec of wind_vectors) {
       const speed = Math.sqrt(vec[0] ** 2 + vec[1] ** 2 + vec[2] ** 2)
-      if (speed > maxSpd) maxSpd = speed
+      if (speed > maxSpeed) maxSpeed = speed
     }
-    maxSpd = maxSpd || 1 // Avoid division by zero
+    maxSpeed = maxSpeed || 1
 
-    // Filter indices based on displayDownsample
-    const indices: number[] = []
-    const [nx, ny, nz] = shape
+    // Generate grid-based seed points for even coverage
+    // Calculate grid size to achieve target streamline count
+    const gridSize = Math.ceil(Math.pow(streamlineCount, 1/3))
+    const seeds = generateGridSeeds(bounds, gridSize)
 
-    for (let iz = 0; iz < nz; iz += displayDownsample) {
-      for (let iy = 0; iy < ny; iy += displayDownsample) {
-        for (let ix = 0; ix < nx; ix += displayDownsample) {
-          const idx = ix + iy * nx + iz * nx * ny
-          if (idx < wind_vectors.length) {
-            indices.push(idx)
-          }
-        }
+    // Advect streamlines from each seed
+    const lines: StreamlineData[] = []
+    for (const seed of seeds) {
+      const streamline = advectStreamline(
+        seed,
+        wind_vectors,
+        shape,
+        bounds,
+        resolution,
+        integrationSteps,
+        stepSize,
+        maxSpeed
+      )
+
+      if (streamline) {
+        lines.push(streamline)
       }
     }
 
-    const numArrows = indices.length
-    const matricesArray = new Float32Array(numArrows * 16)
-    const colorsArray = new Float32Array(numArrows * 3)
+    return lines
+  }, [data, streamlineCount, integrationSteps, stepSize])
 
-    const tempMatrix = new THREE.Matrix4()
-    const tempPosition = new THREE.Vector3()
-    const tempQuaternion = new THREE.Quaternion()
-    const tempScale = new THREE.Vector3()
-    const upVector = new THREE.Vector3(0, 1, 0)
-
-    indices.forEach((idx, i) => {
-      const windVec = wind_vectors[idx]
-      const turb = turbulence[idx] || 0
-
-      // Get world position
-      const pos = indexToPosition(idx, shape, bounds, resolution)
-      tempPosition.set(pos.x, pos.y, pos.z)
-
-      // Calculate wind direction and speed
-      const windDir = new THREE.Vector3(windVec[0], windVec[1], windVec[2])
-      const speed = windDir.length()
-      const normalizedSpeed = speed / maxSpd
-
-      // Scale arrow by wind speed
-      const scale = arrowScale * (0.5 + normalizedSpeed * 1.5)
-      tempScale.set(scale, scale * (0.5 + speed * 0.1), scale)
-
-      // Rotate arrow to point in wind direction
-      if (speed > 0.01) {
-        windDir.normalize()
-        tempQuaternion.setFromUnitVectors(upVector, windDir)
-      } else {
-        tempQuaternion.identity()
-      }
-
-      // Build transformation matrix
-      tempMatrix.compose(tempPosition, tempQuaternion, tempScale)
-      tempMatrix.toArray(matricesArray, i * 16)
-
-      // Set color based on mode
-      const color = colorMode === 'turbulence'
-        ? getTurbulenceColor(turb)
-        : getSpeedColor(normalizedSpeed)
-
-      colorsArray[i * 3] = color.r
-      colorsArray[i * 3 + 1] = color.g
-      colorsArray[i * 3 + 2] = color.b
-    })
-
-    return {
-      count: numArrows,
-      matrices: matricesArray,
-      colors: colorsArray,
-    }
-  }, [data, colorMode, arrowScale, displayDownsample])
-
-  // Create arrow geometry once
-  const arrowGeometry = useMemo(() => {
-    // Simple cone for arrow (pointing up, will be rotated)
-    const geo = new THREE.ConeGeometry(0.3, 2, 6)
-    geo.translate(0, 1, 0) // Move pivot to base
-    return geo
-  }, [])
-
-  // Update instance matrices and colors
-  useEffect(() => {
-    if (!meshRef.current) return
-
-    const mesh = meshRef.current
-
-    // Set matrices
-    const tempMatrix = new THREE.Matrix4()
-    for (let i = 0; i < count; i++) {
-      tempMatrix.fromArray(matrices, i * 16)
-      mesh.setMatrixAt(i, tempMatrix)
-    }
-    mesh.instanceMatrix.needsUpdate = true
-
-    // Set colors
-    const colorAttr = new THREE.InstancedBufferAttribute(colors, 3)
-    mesh.instanceColor = colorAttr
-
-  }, [count, matrices, colors])
-
-  // Animate flow effect (optional)
-  useFrame((_, delta) => {
-    if (!animateFlow || !meshRef.current) return
-    timeRef.current += delta
-
-    // Could animate arrow positions or opacity for flow effect
-    // For now, just a placeholder
-  })
-
-  if (!visible || count === 0) return null
+  if (!visible) return null
 
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[arrowGeometry, undefined, count]}
-      frustumCulled={false}
-    >
-      <meshStandardMaterial
-        vertexColors
-        transparent
-        opacity={opacity}
-        side={THREE.DoubleSide}
-      />
-    </instancedMesh>
+    <group name="wind-streamlines">
+      <StreamlineLines streamlines={streamlines} opacity={opacity} curveSegments={curveSegments} />
+      <ArrowHeads streamlines={streamlines} arrowSize={arrowSize} opacity={opacity} />
+    </group>
   )
 }

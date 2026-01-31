@@ -157,10 +157,11 @@ function SceneContent({ progress, currentRoute, showWindField }: SceneContentPro
         <WindField
           data={windFieldData}
           visible={true}
-          colorMode="speed"
-          arrowScale={1.5}
-          opacity={0.3}
-          displayDownsample={4}
+          streamlineCount={400}
+          integrationSteps={18}
+          stepSize={8.0}
+          opacity={0.5}
+          arrowSize={3.5}
         />
       )}
 

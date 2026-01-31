@@ -109,10 +109,11 @@ function SceneContent({ routeType, showWindField, showTerrain, showWaypoints }: 
         <WindField
           data={windFieldData}
           visible={true}
-          colorMode="speed"
-          arrowScale={2.0}
-          opacity={0.6}
-          displayDownsample={3}
+          streamlineCount={550}
+          integrationSteps={22}
+          stepSize={7.0}
+          opacity={0.8}
+          arrowSize={4.0}
         />
       )}
 
@@ -136,6 +137,7 @@ function SceneContent({ routeType, showWindField, showTerrain, showWaypoints }: 
           scale={2}
           showTrail={true}
           showEffort={true}
+          showWind={true}
         />
       )}
 

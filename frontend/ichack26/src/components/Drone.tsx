@@ -191,17 +191,22 @@ interface WindVectorProps {
 }
 
 function WindVector({ wind, scale = 0.5 }: WindVectorProps) {
+  // All hooks must be called before any conditional returns
   const windVec = useMemo(() => new THREE.Vector3(...wind), [wind])
   const magnitude = windVec.length()
+  const dir = useMemo(() => {
+    if (magnitude < 0.1) return new THREE.Vector3(0, 1, 0) // Default direction
+    return windVec.clone().normalize()
+  }, [windVec, magnitude])
 
-  if (magnitude < 0.1) return null
-
-  const dir = windVec.clone().normalize()
   const quaternion = useMemo(() => {
     const q = new THREE.Quaternion()
     q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir)
     return q
   }, [dir])
+
+  // Now safe to return early after all hooks
+  if (magnitude < 0.1) return null
 
   const length = magnitude * scale
 

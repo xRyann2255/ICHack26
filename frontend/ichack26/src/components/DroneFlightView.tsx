@@ -83,10 +83,11 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
         <WindField
           data={windFieldData}
           visible={true}
-          colorMode="speed"
-          arrowScale={1.5}
-          opacity={0.4}
-          displayDownsample={4}
+          streamlineCount={500}
+          integrationSteps={20}
+          stepSize={8.0}
+          opacity={0.75}
+          arrowSize={4.0}
         />
       )}
 
@@ -110,6 +111,7 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
           scale={2.5}
           showTrail={true}
           showEffort={true}
+          showWind={true}
         />
       )}
 

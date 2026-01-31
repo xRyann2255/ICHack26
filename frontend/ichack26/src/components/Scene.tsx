@@ -118,10 +118,11 @@ export default function Scene({
         <WindField
           data={windFieldData}
           visible={true}
-          colorMode="speed"
-          arrowScale={2.0}
-          opacity={0.8}
-          displayDownsample={2}
+          streamlineCount={600}
+          integrationSteps={25}
+          stepSize={6.0}
+          opacity={0.85}
+          arrowSize={4.5}
         />
       )}
 
