@@ -15,7 +15,6 @@ function App() {
         <Canvas
           camera={{
             position: [200, 200, 150],
-            up: [0, 0, 1],  // Z-up to match backend coordinate system
             fov: 60,
             near: 0.1,
             far: 10000,

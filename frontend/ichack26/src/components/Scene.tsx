@@ -33,10 +33,9 @@ export default function Scene() {
         <Terrain />
       </Suspense>
 
-      {/* Ground grid for reference - rotated to XY plane (Z-up) */}
+      {/* Ground grid for reference */}
       <Grid
         position={[0, 0, 0]}
-        rotation={[Math.PI / 2, 0, 0]}
         args={[100, 100]}
         cellSize={5}
         cellThickness={0.5}
@@ -48,14 +47,13 @@ export default function Scene() {
         infiniteGrid
       />
 
-      {/* Camera controls - Z-up to match backend coordinate system */}
+      {/* Camera controls */}
       <OrbitControls
         makeDefault
         minDistance={10}
         maxDistance={2000}
         minPolarAngle={0}
         maxPolarAngle={Math.PI / 2.1}
-        up={[0, 0, 1]}
       />
     </>
   )
