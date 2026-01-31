@@ -47,7 +47,6 @@ except ImportError:
 from ..grid.node import Vector3
 from ..grid.grid_3d import Grid3D
 from ..data.wind_field import WindField
-from ..data.building_geometry import BuildingCollection
 from ..data.mock_generator import MockDataGenerator
 from ..data.stl_loader import STLLoader, STLMesh, MeshCollisionChecker
 from ..routing.cost_calculator import CostCalculator, WeightConfig
@@ -73,17 +72,16 @@ class ServerConfig:
     host: str = "localhost"
     port: int = 8765
 
-    # Scene configuration (x, y_height, z_depth)
+    # Scene configuration (x, y_height, z_depth) - will be updated from STL bounds
     bounds_min: tuple = (0, 0, 0)
     bounds_max: tuple = (200, 80, 200)  # (x, y_height, z_depth)
     grid_resolution: float = 10.0
     wind_resolution: float = 5.0
     base_wind: tuple = (8.0, 0.0, 2.0)  # (vx, vy_vertical, vz)
-    num_buildings: int = 4
     random_seed: int = 42
 
-    # STL file path (if provided, uses mesh instead of random buildings)
-    stl_path: Optional[str] = None
+    # STL file path - defaults to southken.stl in project root
+    stl_path: str = "southken.stl"
 
     # Simulation configuration
     frame_delay: float = 0.05  # Seconds between frame sends (controls playback speed)
@@ -104,7 +102,6 @@ class WebSocketServer:
             raise ImportError("websockets library not installed. Run: pip install websockets")
 
         self.config = config or ServerConfig()
-        self.buildings: Optional[BuildingCollection] = None
         self.wind_field: Optional[WindField] = None
         self.grid: Optional[Grid3D] = None
         self.wind_router: Optional[DijkstraRouter] = None
@@ -118,6 +115,8 @@ class WebSocketServer:
 
     def initialize(self) -> None:
         """Initialize scene data and routing infrastructure."""
+        import os
+
         if self._initialized:
             return
 
@@ -125,69 +124,52 @@ class WebSocketServer:
 
         gen = MockDataGenerator(seed=self.config.random_seed)
 
-        # Check if using STL file for scene
-        if self.config.stl_path:
-            logger.info(f"Loading scene from STL: {self.config.stl_path}")
-            self.mesh, self.wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
-                self.config.stl_path,
-                wind_resolution=self.config.wind_resolution,
-                base_wind=self.config.base_wind,
-                flight_ceiling=50.0,
-                margin=50.0
-            )
-            self.buildings = BuildingCollection([])  # Empty - using mesh instead
-            self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
-            # Update config bounds to match mesh
-            self.config.bounds_min = (bounds_min.x, bounds_min.y, bounds_min.z)
-            self.config.bounds_max = (bounds_max.x, bounds_max.y, bounds_max.z)
-            logger.info(f"STL scene loaded, bounds: {bounds_min} to {bounds_max}")
-        else:
-            bounds_min = Vector3(*self.config.bounds_min)
-            bounds_max = Vector3(*self.config.bounds_max)
+        # Resolve STL path - check multiple locations
+        stl_path = self.config.stl_path
+        if not os.path.isabs(stl_path):
+            # Try relative to current directory first
+            if not os.path.exists(stl_path):
+                # Try relative to this file's directory (backend/server/)
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(os.path.dirname(script_dir))
+                stl_path = os.path.join(project_root, self.config.stl_path)
 
-            # Generate mock data
-            logger.info("Generating mock data...")
-            self.buildings = gen.generate_buildings(
-                bounds_min, bounds_max,
-                num_buildings=self.config.num_buildings
-            )
-            logger.info(f"Created {len(self.buildings)} buildings")
+        if not os.path.exists(stl_path):
+            raise FileNotFoundError(f"STL file not found: {stl_path}. The southken.stl file is required.")
 
-            self.wind_field = gen.generate_wind_field(
-                bounds_min, bounds_max,
-                self.buildings,
-                resolution=self.config.wind_resolution,
-                base_wind=self.config.base_wind
-            )
+        # Load scene from STL file
+        logger.info(f"Loading scene from STL: {stl_path}")
+        self.mesh, self.wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
+            stl_path,
+            wind_resolution=self.config.wind_resolution,
+            base_wind=self.config.base_wind,
+            flight_ceiling=50.0,
+            margin=50.0
+        )
+        self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
+        # Update config bounds to match mesh
+        self.config.bounds_min = (bounds_min.x, bounds_min.y, bounds_min.z)
+        self.config.bounds_max = (bounds_max.x, bounds_max.y, bounds_max.z)
+        logger.info(f"STL scene loaded, bounds: {bounds_min} to {bounds_max}")
 
         logger.info(f"Wind field: {self.wind_field.nx}x{self.wind_field.ny}x{self.wind_field.nz}")
-
-        # Ensure we have Vector3 bounds
-        bounds_min = Vector3(*self.config.bounds_min)
-        bounds_max = Vector3(*self.config.bounds_max)
 
         # Create grid
         logger.info("Creating grid...")
         self.grid = Grid3D(bounds_min, bounds_max, resolution=self.config.grid_resolution)
         logger.info(f"Grid: {self.grid.nx}x{self.grid.ny}x{self.grid.nz} = {self.grid.total_nodes} nodes")
 
-        # Setup routers
+        # Setup routers (using mesh collision detection)
         logger.info("Setting up routers...")
 
         calc = CostCalculator(self.wind_field, WeightConfig.speed_priority())
-        if self.mesh:
-            calc.precompute_edge_costs(self.grid, mesh=self.mesh)
-        else:
-            calc.precompute_edge_costs(self.grid, buildings=self.buildings)
+        calc.precompute_edge_costs(self.grid, mesh=self.mesh)
         logger.info(f"Computed {calc.edge_count} wind-aware edges")
 
         self.wind_router = DijkstraRouter(self.grid, calc, capture_interval=50)
 
         self.naive_router = NaiveRouter(self.grid, capture_interval=50)
-        if self.mesh:
-            self.naive_router.precompute_valid_edges(mesh=self.mesh)
-        else:
-            self.naive_router.precompute_valid_edges(buildings=self.buildings)
+        self.naive_router.precompute_valid_edges(mesh=self.mesh)
 
         self.smoother = PathSmoother(points_per_segment=5)
         self.metrics_calc = MetricsCalculator(self.wind_field)
@@ -212,15 +194,15 @@ class WebSocketServer:
             },
             "grid_resolution": self.config.grid_resolution,
             "wind_base_direction": list(self.config.base_wind),
-            "buildings": [
-                {
-                    "id": b.id,
-                    "min": b.min_corner.to_list(),
-                    "max": b.max_corner.to_list(),
-                }
-                for b in self.buildings
-            ],
+            # Buildings array is empty - frontend loads STL mesh directly
+            "buildings": [],
             "wind_field_shape": [self.wind_field.nx, self.wind_field.ny, self.wind_field.nz],
+            # Always using STL mesh for collision detection
+            "use_stl_mesh": True,
+            "mesh_bounds": {
+                "min": self.mesh.min_bounds.tolist(),
+                "max": self.mesh.max_bounds.tolist(),
+            },
         }
 
     def get_wind_field_data(self, downsample: int = 1, precision: int = 2) -> Dict[str, Any]:
@@ -709,7 +691,7 @@ class WebSocketServer:
 
     def _validate_position(self, pos: List[float], name: str) -> Optional[str]:
         """
-        Validate a position is within bounds and not inside a building.
+        Validate a position is within bounds and not inside mesh geometry.
 
         Returns:
             Error message if invalid, None if valid.
@@ -729,17 +711,10 @@ class WebSocketServer:
         if not (min_b[2] <= z <= max_b[2]):
             return f"{name} z={z} is outside bounds [{min_b[2]}, {max_b[2]}]"
 
-        # Check not inside a building
+        # Check not inside mesh geometry
         pos_vec = Vector3(x, y, z)
-
-        # Use mesh collision if available, otherwise use building AABBs
-        if self.collision_checker:
-            if self.collision_checker.point_in_building(pos_vec):
-                return f"{name} position is inside mesh geometry"
-        else:
-            for building in self.buildings:
-                if building.contains_point(pos_vec):
-                    return f"{name} position is inside building {building.id}"
+        if self.collision_checker.point_in_building(pos_vec):
+            return f"{name} position is inside mesh geometry"
 
         return None
 
@@ -882,7 +857,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="localhost", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
     parser.add_argument("--frame-delay", type=float, default=0.05, help="Delay between frames (seconds)")
-    parser.add_argument("--stl", type=str, default=None, help="Path to STL file for scene geometry")
+    parser.add_argument("--stl", type=str, default="southken.stl", help="Path to STL file for scene geometry (default: southken.stl)")
     parser.add_argument("--grid-resolution", type=float, default=10.0, help="Pathfinding grid resolution (meters)")
     parser.add_argument("--wind-resolution", type=float, default=10.0, help="Wind field resolution (meters)")
 
