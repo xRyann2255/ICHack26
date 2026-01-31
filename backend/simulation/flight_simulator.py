@@ -302,12 +302,19 @@ class FlightSimulator:
 
         This implements "crabbing" - pointing into the wind to maintain course.
 
+        The physics: ground_velocity = heading * airspeed + wind
+        We want ground_velocity to be in desired_direction.
+
+        For perpendicular wind component w_perp:
+        - We need heading to have component -w_perp/airspeed perpendicular to desired
+        - This gives us: sin(crab_angle) = |w_perp| / airspeed
+
+        If |w_perp| > airspeed, we can't fully compensate. In this case,
+        we crab as much as possible while still making forward progress.
+
         Returns:
             Tuple of (corrected_heading, correction_vector)
         """
-        # Simplified model: We need to point partially into the wind
-        # to counteract its effect on our ground track
-
         wind_speed = wind.magnitude()
 
         if wind_speed < 0.1:
@@ -315,34 +322,44 @@ class FlightSimulator:
             return desired_direction, Vector3(0, 0, 0)
 
         # Decompose wind into components parallel and perpendicular to desired direction
-        wind_parallel = desired_direction * wind.dot(desired_direction)
+        wind_dot_desired = wind.dot(desired_direction)
+        wind_parallel = desired_direction * wind_dot_desired
         wind_perpendicular = wind - wind_parallel
-
-        # We need to correct for the perpendicular component
-        # by angling our heading into the wind
-
         perp_speed = wind_perpendicular.magnitude()
 
         if perp_speed < 0.1:
-            # Wind is aligned with our direction
+            # Wind is aligned with our direction (headwind or tailwind only)
             return desired_direction, Vector3(0, 0, 0)
 
-        # Calculate correction angle
-        # sin(angle) = perpendicular_wind_speed / airspeed
-        sin_angle = min(1.0, perp_speed / airspeed)
-        correction_angle = math.asin(sin_angle)
+        # Calculate the crab angle needed to counter perpendicular wind
+        # sin(crab_angle) = perp_speed / airspeed
+        # But we must ensure we still make forward progress
 
-        # Correction direction (into the wind)
+        # Maximum crab angle we'll allow (70 degrees) to ensure forward progress
+        max_crab_angle = math.radians(70.0)
+        max_sin = math.sin(max_crab_angle)
+
+        # Calculate required sin of crab angle
+        sin_crab = perp_speed / airspeed
+
+        # Limit the crab angle to ensure forward progress
+        if sin_crab > max_sin:
+            sin_crab = max_sin
+
+        # Crab angle
+        crab_angle = math.asin(sin_crab)
+
+        # Correction direction (into the perpendicular wind)
         correction_direction = (wind_perpendicular * -1).normalized()
 
-        # Blend desired direction with correction
-        # This is a simplified model; real crabbing is more complex
-        correction_factor = sin_angle
-        corrected = desired_direction + correction_direction * correction_factor
+        # Compute corrected heading using proper rotation
+        # heading = desired * cos(crab) + correction_dir * sin(crab)
+        cos_crab = math.cos(crab_angle)
+        corrected = desired_direction * cos_crab + correction_direction * sin_crab
         corrected = corrected.normalized()
 
-        # Correction vector for visualization
-        correction_vector = correction_direction * correction_factor
+        # Correction vector for visualization (shows how much we're crabbing)
+        correction_vector = correction_direction * sin_crab
 
         return corrected, correction_vector
 
@@ -350,10 +367,15 @@ class FlightSimulator:
         self,
         current: Vector3,
         target: Vector3,
-        max_angle_rad: float
+        max_angle_degrees: float
     ) -> Vector3:
         """
         Turn current heading toward target, limited by max angle.
+
+        Args:
+            current: Current heading (unit vector)
+            target: Target heading (unit vector)
+            max_angle_degrees: Maximum turn angle in degrees
 
         Returns:
             New heading (unit vector)
@@ -365,13 +387,13 @@ class FlightSimulator:
         if angle < 1e-6:
             return target
 
-        max_angle_rad_actual = math.radians(max_angle_rad)
+        max_angle_rad = math.radians(max_angle_degrees)
 
-        if angle <= max_angle_rad_actual:
+        if angle <= max_angle_rad:
             return target
 
         # Interpolate toward target
-        t = max_angle_rad_actual / angle
+        t = max_angle_rad / angle
         result = current * (1 - t) + target * t
         return result.normalized()
 
@@ -385,18 +407,22 @@ class FlightSimulator:
         Compute effort level (0-1) for visualization.
 
         Effort increases with:
-        - Headwind strength
-        - Amount of correction needed
+        - Headwind strength (normalized by airspeed)
+        - Amount of correction needed (normalized by max possible)
         """
-        # Headwind component
-        headwind = max(0, -wind.dot(heading))
-        headwind_effort = headwind * self.params.headwind_effort_factor
+        # Headwind component - normalize by max airspeed for proper scaling
+        # A headwind equal to airspeed should be very high effort
+        headwind = max(0.0, -wind.dot(heading))
+        headwind_normalized = headwind / self.params.max_airspeed
+        headwind_effort = headwind_normalized * 0.5  # Headwind can contribute up to 0.5
 
-        # Correction effort
-        correction_magnitude = correction.magnitude()
-        correction_effort = correction_magnitude * self.params.correction_effort_factor * 50
+        # Correction effort - correction magnitude is typically 0-1 (sin of crab angle)
+        # Max correction of 1.0 means we're at max crab angle
+        correction_magnitude = min(1.0, correction.magnitude())
+        correction_effort = correction_magnitude * 0.3  # Correction can contribute up to 0.3
 
-        # Total effort
+        # Total effort (base + headwind + correction)
+        # Base effort is for normal forward flight
         effort = self.params.base_effort + headwind_effort + correction_effort
 
         # Clamp to 0-1

@@ -50,10 +50,11 @@ class WindField:
 
     def _trilinear_interpolate_wind(self, ix: float, iy: float, iz: float) -> Vector3:
         """Trilinear interpolation for wind vector."""
-        # Clamp to valid range
-        ix = max(0, min(self.nx - 1.001, ix))
-        iy = max(0, min(self.ny - 1.001, iy))
-        iz = max(0, min(self.nz - 1.001, iz))
+        # Clamp to valid range (use small epsilon to avoid edge case at exact boundary)
+        eps = 1e-6
+        ix = max(0.0, min(float(self.nx - 1) - eps, ix))
+        iy = max(0.0, min(float(self.ny - 1) - eps, iy))
+        iz = max(0.0, min(float(self.nz - 1) - eps, iz))
 
         # Get integer indices and fractions
         x0, y0, z0 = int(ix), int(iy), int(iz)
@@ -76,10 +77,11 @@ class WindField:
     def _trilinear_interpolate_turbulence(self, ix: float, iy: float,
                                           iz: float) -> float:
         """Trilinear interpolation for turbulence scalar."""
-        # Clamp to valid range
-        ix = max(0, min(self.nx - 1.001, ix))
-        iy = max(0, min(self.ny - 1.001, iy))
-        iz = max(0, min(self.nz - 1.001, iz))
+        # Clamp to valid range (use small epsilon to avoid edge case at exact boundary)
+        eps = 1e-6
+        ix = max(0.0, min(float(self.nx - 1) - eps, ix))
+        iy = max(0.0, min(float(self.ny - 1) - eps, iy))
+        iz = max(0.0, min(float(self.nz - 1) - eps, iz))
 
         # Get integer indices and fractions
         x0, y0, z0 = int(ix), int(iy), int(iz)

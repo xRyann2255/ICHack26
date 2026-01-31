@@ -287,6 +287,17 @@ class WebSocketServer:
                 await self.send_error(websocket, "Missing start or end position")
                 return
 
+            # Validate positions
+            validation_error = self._validate_position(start, "start")
+            if validation_error:
+                await self.send_error(websocket, validation_error)
+                return
+
+            validation_error = self._validate_position(end, "end")
+            if validation_error:
+                await self.send_error(websocket, validation_error)
+                return
+
             await self.run_simulation(websocket, start, end, route_type)
 
         elif msg_type == "ping":
@@ -444,9 +455,12 @@ class WebSocketServer:
             else:
                 drift = Vector3(0, 0, 0)
 
-            # Compute effort
-            headwind = max(0, -wind.dot(state.heading))
-            effort = min(1.0, 0.1 + headwind * 0.05 + correction.magnitude() * 0.5)
+            # Compute effort (normalized by airspeed for proper scaling)
+            headwind = max(0.0, -wind.dot(state.heading))
+            headwind_normalized = headwind / sim_params.max_airspeed
+            headwind_effort = headwind_normalized * 0.5  # Up to 0.5 for headwind
+            correction_effort = min(1.0, correction.magnitude()) * 0.3  # Up to 0.3 for correction
+            effort = min(1.0, 0.1 + headwind_effort + correction_effort)
 
             # Create frame
             frame = FlightFrame(
@@ -501,6 +515,36 @@ class WebSocketServer:
             waypoints_reached=state.target_waypoint_index
         )
 
+    def _validate_position(self, pos: List[float], name: str) -> Optional[str]:
+        """
+        Validate a position is within bounds and not inside a building.
+
+        Returns:
+            Error message if invalid, None if valid.
+        """
+        if not isinstance(pos, (list, tuple)) or len(pos) != 3:
+            return f"{name} position must be [x, y, z]"
+
+        x, y, z = pos
+        min_b = self.config.bounds_min
+        max_b = self.config.bounds_max
+
+        # Check bounds
+        if not (min_b[0] <= x <= max_b[0]):
+            return f"{name} x={x} is outside bounds [{min_b[0]}, {max_b[0]}]"
+        if not (min_b[1] <= y <= max_b[1]):
+            return f"{name} y={y} is outside bounds [{min_b[1]}, {max_b[1]}]"
+        if not (min_b[2] <= z <= max_b[2]):
+            return f"{name} z={z} is outside bounds [{min_b[2]}, {max_b[2]}]"
+
+        # Check not inside a building
+        pos_vec = Vector3(x, y, z)
+        for building in self.buildings:
+            if building.contains_point(pos_vec):
+                return f"{name} position is inside building {building.id}"
+
+        return None
+
     def _direction_to(self, from_pos: Vector3, to_pos: Vector3) -> Vector3:
         """Compute unit direction vector."""
         diff = to_pos - from_pos
@@ -510,27 +554,49 @@ class WebSocketServer:
         return diff / mag
 
     def _compute_corrected_heading(self, desired_direction: Vector3, wind: Vector3, airspeed: float):
-        """Compute heading with wind correction."""
+        """
+        Compute heading with wind correction (crabbing).
+
+        The physics: ground_velocity = heading * airspeed + wind
+        We want ground_velocity to be in desired_direction.
+
+        For perpendicular wind component w_perp:
+        - sin(crab_angle) = |w_perp| / airspeed
+
+        If |w_perp| > airspeed, we crab as much as possible while still
+        making forward progress (max 70 degrees).
+        """
         import math
 
         wind_speed = wind.magnitude()
         if wind_speed < 0.1:
             return desired_direction, Vector3(0, 0, 0)
 
-        wind_perpendicular = wind - desired_direction * wind.dot(desired_direction)
+        # Decompose wind into parallel and perpendicular components
+        wind_dot_desired = wind.dot(desired_direction)
+        wind_perpendicular = wind - desired_direction * wind_dot_desired
         perp_speed = wind_perpendicular.magnitude()
 
         if perp_speed < 0.1:
             return desired_direction, Vector3(0, 0, 0)
 
-        sin_angle = min(1.0, perp_speed / airspeed)
-        correction_direction = (wind_perpendicular * -1).normalized()
-        correction_factor = sin_angle
+        # Calculate crab angle, but limit to 70 degrees to ensure forward progress
+        max_crab_angle = math.radians(70.0)
+        max_sin = math.sin(max_crab_angle)
 
-        corrected = desired_direction + correction_direction * correction_factor
+        sin_crab = min(max_sin, perp_speed / airspeed)
+        crab_angle = math.asin(sin_crab)
+
+        # Correction direction (into the perpendicular wind)
+        correction_direction = (wind_perpendicular * -1).normalized()
+
+        # Compute corrected heading using proper rotation
+        cos_crab = math.cos(crab_angle)
+        corrected = desired_direction * cos_crab + correction_direction * sin_crab
         corrected = corrected.normalized()
 
-        correction_vector = correction_direction * correction_factor
+        # Correction vector for visualization
+        correction_vector = correction_direction * sin_crab
         return corrected, correction_vector
 
     def _turn_toward(self, current: Vector3, target: Vector3, max_angle: float) -> Vector3:
