@@ -314,6 +314,149 @@ The frontend uses this data to:
 
 ---
 
+## WebSocket Server
+
+### Starting the Server
+
+```bash
+python -m backend.server.websocket_server --port 8765 --frame-delay 0.05
+```
+
+### Protocol
+
+**1. Client connects to `ws://localhost:8765`**
+
+**2. Client requests scene info:**
+```json
+{"type": "get_scene"}
+```
+
+**3. Server responds with scene:**
+```json
+{
+  "type": "scene",
+  "data": {
+    "bounds": {"min": [0,0,0], "max": [200,200,80]},
+    "buildings": [{"id": "...", "min": [...], "max": [...]}]
+  }
+}
+```
+
+**4. Client requests wind field (for streamlines):**
+```json
+{"type": "get_wind_field", "downsample": 2}
+```
+
+**5. Server sends wind field:**
+```json
+{
+  "type": "wind_field",
+  "data": {
+    "bounds": {"min": [0,0,0], "max": [200,200,80]},
+    "resolution": 10.0,
+    "shape": [21, 21, 9],
+    "wind_vectors": [[vx,vy,vz], ...],
+    "turbulence": [0.05, 0.12, ...]
+  }
+}
+```
+
+**6. Client starts simulation:**
+```json
+{
+  "type": "start",
+  "start": [180, 100, 40],
+  "end": [20, 100, 40],
+  "route_type": "both"
+}
+```
+
+**5. Server sends paths:**
+```json
+{
+  "type": "paths",
+  "data": {
+    "naive": [[x,y,z], ...],
+    "optimized": [[x,y,z], ...]
+  }
+}
+```
+
+**6. Server streams frames in real-time:**
+```json
+{
+  "type": "frame",
+  "route": "naive",
+  "data": {
+    "time": 1.5,
+    "position": [175.2, 102.3, 40.0],
+    "velocity": [12.5, 0.3, 0],
+    "heading": [0.95, -0.31, 0],
+    "wind": [5.0, 2.0, 0],
+    "effort": 0.45,
+    "groundspeed": 12.8,
+    "airspeed": 15.0
+  }
+}
+```
+
+**7. Server sends completion:**
+```json
+{
+  "type": "complete",
+  "metrics": {...}
+}
+```
+
+### Frame Data (per frame)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `time` | float | Simulation time (seconds) |
+| `position` | [x,y,z] | World position |
+| `velocity` | [x,y,z] | Ground velocity |
+| `heading` | [x,y,z] | Drone nose direction |
+| `wind` | [x,y,z] | Wind at position |
+| `effort` | 0-1 | How hard drone is working |
+| `groundspeed` | float | Speed over ground (m/s) |
+| `airspeed` | float | Speed through air (m/s) |
+
+### Wind Field Data
+
+The wind field can be requested for rendering streamlines:
+
+| Message | Response Size | Use Case |
+|---------|--------------|----------|
+| `{"type": "get_wind_field"}` | ~1.5 MB | Full resolution |
+| `{"type": "get_wind_field", "downsample": 2}` | ~220 KB | For visualization |
+| `{"type": "get_all", "downsample": 2}` | ~222 KB | Scene + wind combined |
+
+**Wind field format:**
+- `shape`: [nx, ny, nz] grid dimensions
+- `resolution`: meters between samples
+- `wind_vectors`: flattened array of [vx, vy, vz] per cell
+- `turbulence`: flattened array of turbulence values (0-1)
+- Array order: x varies fastest, then y, then z (C-order/row-major)
+
+**Converting flat index to 3D position:**
+```javascript
+// Frontend: convert cell index to world position
+function cellToPosition(index, shape, bounds, resolution) {
+  const [nx, ny, nz] = shape;
+  const iz = Math.floor(index / (nx * ny));
+  const iy = Math.floor((index % (nx * ny)) / nx);
+  const ix = index % nx;
+
+  return {
+    x: bounds.min[0] + ix * resolution,
+    y: bounds.min[1] + iy * resolution,
+    z: bounds.min[2] + iz * resolution
+  };
+}
+```
+
+---
+
 ## Implementation Details
 
 ### Pre-computation Strategy
@@ -501,6 +644,7 @@ Follow this sequence for the routing algorithm:
 11. [x] **Step 11: Serializer** - JSON output for frontend
 12. [x] **Step 12: Main entry point** - CLI integration
 13. [x] **Step 13: Drone flight simulator** - Simulate actual flight with wind drift/corrections
+14. [x] **Step 14: WebSocket server** - Live streaming of drone positions to frontend
 
 ### Verification at Each Step
 
