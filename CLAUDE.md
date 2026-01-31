@@ -199,6 +199,121 @@ These metrics should be displayed comparatively to highlight the benefits of win
 
 ---
 
+## Drone Flight Simulator
+
+### Purpose
+
+The pathfinding algorithm outputs a series of waypoints, but the frontend 3D visualization needs to show the drone **actually flying** through the wind field. This includes:
+
+- Drone being pushed off course by wind
+- Drone making corrections to stay on the path
+- Visual difference between naive drone (struggling) and optimized drone (working with wind)
+
+### Physics Model
+
+The simulator models a drone flying through wind:
+
+```python
+@dataclass
+class DroneState:
+    position: Vector3      # Current world position
+    velocity: Vector3      # Current velocity (ground-relative)
+    heading: Vector3       # Direction drone is pointing (may differ from velocity due to crabbing)
+    target_waypoint: int   # Index of current target waypoint
+
+@dataclass
+class FlightFrame:
+    time: float            # Simulation time (seconds)
+    position: Vector3      # World position
+    velocity: Vector3      # Ground velocity
+    heading: Vector3       # Drone heading (nose direction)
+    wind: Vector3          # Wind at this position
+    drift: Vector3         # How much wind is pushing drone off course
+    correction: Vector3    # Correction vector drone is applying
+    effort: float          # 0-1 indicating how hard drone is working (for visualization)
+    airspeed: float        # Speed relative to air
+    groundspeed: float     # Speed relative to ground
+```
+
+### Flight Dynamics
+
+```python
+def simulate_step(state, wind_field, waypoints, dt=0.1):
+    # 1. Get wind at current position
+    wind = wind_field.get_wind_at(state.position)
+
+    # 2. Calculate desired direction to next waypoint
+    target = waypoints[state.target_waypoint]
+    desired_dir = normalize(target - state.position)
+
+    # 3. Calculate required heading to compensate for wind ("crabbing")
+    # To achieve desired ground velocity, we need: airspeed_vec + wind = ground_velocity
+    # So: heading = desired_dir * airspeed - wind (simplified)
+
+    # 4. Apply drone's max airspeed
+    airspeed = DRONE_MAX_AIRSPEED  # e.g., 15 m/s
+    air_velocity = heading * airspeed
+
+    # 5. Calculate actual ground velocity
+    ground_velocity = air_velocity + wind
+
+    # 6. Calculate effort (how much correction is needed)
+    # effort = |correction_angle| / max_correction_angle
+
+    # 7. Update position
+    new_position = state.position + ground_velocity * dt
+
+    # 8. Check if waypoint reached, advance to next
+```
+
+### Output Format
+
+The simulator outputs a time series for the frontend:
+
+```json
+{
+  "flight_data": {
+    "drone_params": {
+      "max_airspeed": 15.0,
+      "max_correction_rate": 45.0
+    },
+    "frames": [
+      {
+        "time": 0.0,
+        "position": [10, 10, 30],
+        "velocity": [12.5, 0.3, 0],
+        "heading": [0.95, -0.31, 0],
+        "wind": [5.0, 2.0, 0],
+        "effort": 0.25,
+        "groundspeed": 12.5,
+        "airspeed": 15.0,
+        "waypoint_index": 0
+      },
+      {
+        "time": 0.1,
+        "position": [11.25, 10.03, 30],
+        ...
+      }
+    ],
+    "total_time": 45.2,
+    "total_distance": 450.0,
+    "average_effort": 0.35,
+    "max_effort": 0.82
+  }
+}
+```
+
+### Visualization Use
+
+The frontend uses this data to:
+
+1. **Animate drone position** - Smooth interpolation between frames
+2. **Rotate drone model** - Point in heading direction (shows crabbing)
+3. **Show effort indicator** - Color/particles showing how hard drone is working
+4. **Compare routes** - Side-by-side naive vs optimized, same wind conditions
+
+---
+
 ## Implementation Details
 
 ### Pre-computation Strategy
@@ -298,7 +413,8 @@ def prepare_demo_data():
 
 ### Data Format
 
-To be agreed upon with teammates. Suggested: NumPy `.npz` for wind data, JSON or OBJ for geometry.
+To be agreed upon with teammates. Suggested: NumPy `.
+` for wind data, JSON or OBJ for geometry.
 
 ---
 
@@ -354,3 +470,41 @@ A compelling demo that clearly shows:
 2. Visual difference between naive and optimized routes
 3. Quantitative metrics proving the optimized route is superior
 4. The "wow factor" of seeing wind streamlines and understanding why the route matters
+
+---
+
+## Development Guidelines
+
+### Incremental Implementation
+
+When implementing features, **build incrementally** with discrete, testable steps:
+
+1. **One task at a time** - Complete and verify each component before moving to the next
+2. **Test after each step** - Run the code to confirm it works before continuing
+3. **Small commits** - Each task should result in working, committable code
+4. **Dependencies first** - Build foundational components before those that depend on them
+
+### Implementation Order
+
+Follow this sequence for the routing algorithm:
+
+1. [x] **Step 1: Core data structures** - `Vector3`, `GridNode` classes
+2. [x] **Step 2: Grid creation** - `Grid3D` with node generation and neighbor lookup
+3. [x] **Step 3: Building geometry** - `Building` class with collision detection
+4. [x] **Step 4: Mock data generator** - Generate test wind/building data
+5. [x] **Step 5: Wind field** - `WindField` class with interpolation
+6. [x] **Step 6: Cost calculator** - Edge cost computation with wind awareness
+7. [x] **Step 7: Dijkstra router** - Pathfinding with exploration history
+8. [x] **Step 8: Naive router** - A* comparison baseline
+9. [ ] **Step 9: Path smoother** - Spline interpolation
+10. [ ] **Step 10: Metrics calculator** - All 5 metrics from spec
+11. [ ] **Step 11: Serializer** - JSON output for frontend
+12. [ ] **Step 12: Main entry point** - CLI integration
+13. [ ] **Step 13: Drone flight simulator** - Simulate actual flight with wind drift/corrections
+
+### Verification at Each Step
+
+After completing each step:
+- Run unit tests or manual verification
+- Confirm the component integrates with previous work
+- Document any deviations from the plan
