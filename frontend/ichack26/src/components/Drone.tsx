@@ -356,18 +356,19 @@ export default function Drone({
     // Update target position
     targetPositionRef.current.set(...frame.position)
 
-    // Calculate target rotation from heading
-    const heading = new THREE.Vector3(...frame.heading)
+    // Calculate target rotation from heading - Y-axis rotation only (yaw)
+    // Project heading onto XZ plane to keep drone upright
+    const heading = new THREE.Vector3(frame.heading[0], 0, frame.heading[2])
     const headingLength = heading.length()
 
     // Safety check: ensure heading is valid before normalizing
     if (headingLength > 0.01) {
       heading.normalize()
 
-      // The drone's forward direction is +Z in local space (where the red cone points)
-      // We need to rotate from +Z to the heading direction
-      const forward = new THREE.Vector3(0, 0, 1)
-      targetQuaternionRef.current.setFromUnitVectors(forward, heading)
+      // Calculate yaw angle from the XZ heading
+      // atan2 gives us the angle from +Z axis to the heading direction
+      const yawAngle = Math.atan2(heading.x, heading.z)
+      targetQuaternionRef.current.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawAngle)
     }
     // If heading is invalid, keep the previous rotation (don't update targetQuaternionRef)
 
