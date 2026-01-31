@@ -122,7 +122,7 @@ class WebSocketServer:
 
         logger.info("Initializing server...")
 
-        gen = MockDataGenerator(seed=self.config.random_seed)
+        gen = MockDataGenerator()
 
         # Resolve STL path - check multiple locations
         stl_path = self.config.stl_path
@@ -174,6 +174,7 @@ class WebSocketServer:
         self.naive_router.precompute_valid_edges(collision_checker=self.collision_checker)
 
         self.smoother = PathSmoother(points_per_segment=5)
+        
         self.metrics_calc = MetricsCalculator(self.wind_field)
 
         self.flight_sim = FlightSimulator(
@@ -966,6 +967,11 @@ class WebSocketServer:
         if self.collision_checker.point_in_building(pos_vec):
             return f"{name} position is inside mesh geometry"
 
+        # Check not inside STL mesh (if loaded)
+        if self.mesh is not None:
+            if self.mesh.point_inside(pos_vec):
+                return f"{name} position is inside mesh geometry"
+
         return None
 
     def _direction_to(self, from_pos: Vector3, to_pos: Vector3) -> Vector3:
@@ -1113,11 +1119,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    run_server(
-        host=args.host,
-        port=args.port,
-        frame_delay=args.frame_delay,
-        stl_path=args.stl,
-        grid_resolution=args.grid_resolution,
-        wind_resolution=args.wind_resolution
-    )
+    run_server(host=args.host, port=args.port, frame_delay=args.frame_delay, stl_path=args.stl)

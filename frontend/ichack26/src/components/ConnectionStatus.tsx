@@ -160,7 +160,7 @@ export default function ConnectionStatus() {
           <div style={styles.dataRow}>
             <span style={styles.dataLabel}>Scene:</span>
             <span style={sceneData ? styles.dataLoaded : styles.dataNotLoaded}>
-              {sceneData ? `${sceneData.buildings.length} buildings` : 'Not loaded'}
+              {sceneData ? 'Loaded' : 'Not loaded'}
             </span>
           </div>
           <div style={styles.dataRow}>
