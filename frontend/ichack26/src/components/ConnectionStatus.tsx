@@ -4,7 +4,7 @@
  * Shows the WebSocket connection status and provides controls.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useScene } from '../context/SceneContext';
 import type { ConnectionStatus as ConnectionStatusType } from '../types/api';
 
@@ -27,14 +27,6 @@ const STATUS_LABELS: Record<ConnectionStatusType, string> = {
 };
 
 // ============================================================================
-// Default simulation endpoints
-// Scene bounds: x=[0,200], y=[0,80] (height), z=[0,200]
-// ============================================================================
-
-const DEFAULT_START: [number, number, number] = [180, 50, 180];
-const DEFAULT_END: [number, number, number] = [20, 50, 20];
-
-// ============================================================================
 // Component
 // ============================================================================
 
@@ -51,10 +43,57 @@ export default function ConnectionStatus() {
     simulation,
     startSimulation,
     paths,
+    sceneBounds,
   } = useScene();
 
-  const [simStart] = useState<[number, number, number]>(DEFAULT_START);
-  const [simEnd] = useState<[number, number, number]>(DEFAULT_END);
+  // Auto-fetch scene data when connected
+  const [autoFetched, setAutoFetched] = useState(false);
+  useEffect(() => {
+    if (connectionStatus === 'connected' && !isDataLoaded && !autoFetched) {
+      console.log('[ConnectionStatus] Auto-fetching scene data...');
+      fetchSceneData(2);
+      setAutoFetched(true);
+    }
+  }, [connectionStatus, isDataLoaded, autoFetched, fetchSceneData]);
+
+  // Reset auto-fetch flag when disconnected
+  useEffect(() => {
+    if (connectionStatus === 'disconnected') {
+      setAutoFetched(false);
+    }
+  }, [connectionStatus]);
+
+  // Compute simulation endpoints from scene bounds
+  // Place start and end at opposite corners, at a safe flying altitude
+  const { simStart, simEnd } = useMemo(() => {
+    if (!sceneBounds) {
+      // Fallback defaults if no bounds loaded yet
+      return {
+        simStart: [180, 50, 180] as [number, number, number],
+        simEnd: [20, 50, 20] as [number, number, number],
+      };
+    }
+
+    const { min, max, size } = sceneBounds;
+    // Flying altitude: 70% of scene height, clamped to reasonable range
+    const flyAltitude = Math.min(Math.max(min[1] + size[1] * 0.7, 50), max[1] - 10);
+    // Margin from edges (10% of scene size or 50m, whichever is smaller)
+    const marginX = Math.min(size[0] * 0.1, 50);
+    const marginZ = Math.min(size[2] * 0.1, 50);
+
+    return {
+      simStart: [
+        max[0] - marginX,  // Near max X
+        flyAltitude,
+        max[2] - marginZ,  // Near max Z
+      ] as [number, number, number],
+      simEnd: [
+        min[0] + marginX,  // Near min X
+        flyAltitude,
+        min[2] + marginZ,  // Near min Z
+      ] as [number, number, number],
+    };
+  }, [sceneBounds]);
 
   const statusColor = STATUS_COLORS[connectionStatus];
   const statusLabel = STATUS_LABELS[connectionStatus];

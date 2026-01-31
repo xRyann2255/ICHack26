@@ -342,8 +342,9 @@ class FlightSimulator:
         # sin(crab_angle) = perp_speed / airspeed
         # But we must ensure we still make forward progress
 
-        # Maximum crab angle we'll allow (70 degrees) to ensure forward progress
-        max_crab_angle = math.radians(70.0)
+        # Maximum crab angle we'll allow (30 degrees) to prioritize forward progress
+        # Lower angle means drone drifts off course but always moves forward
+        max_crab_angle = math.radians(30.0)
         max_sin = math.sin(max_crab_angle)
 
         # Calculate required sin of crab angle

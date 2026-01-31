@@ -14,15 +14,15 @@ function App() {
         {/* 3D Canvas */}
         <Canvas
           camera={{
-            position: [200, 200, 150],
+            position: [600, 400, 600],
             fov: 60,
             near: 0.1,
-            far: 10000,
+            far: 5000,
           }}
           shadows
         >
           <color attach="background" args={['#1a1a2e']} />
-          <fog attach="fog" args={['#1a1a2e', 100, 500]} />
+          <fog attach="fog" args={['#1a1a2e', 500, 2000]} />
           <Scene />
         </Canvas>
       </div>
