@@ -652,3 +652,431 @@ After completing each step:
 - Run unit tests or manual verification
 - Confirm the component integrates with previous work
 - Document any deviations from the plan
+
+---
+
+## Frontend Data Reference
+
+This section documents the data formats the frontend receives from the backend WebSocket server.
+
+### Starting the Server
+
+```bash
+python -m backend.server.websocket_server --port 8765 --frame-delay 0.05
+```
+
+Connect to: `ws://localhost:8765`
+
+---
+
+### WebSocket Message Protocol
+
+#### 1. Get Scene Info
+
+**Request:**
+```json
+{"type": "get_scene"}
+```
+
+**Response:**
+```json
+{
+  "type": "scene",
+  "data": {
+    "bounds": {
+      "min": [0, 0, 0],
+      "max": [200, 200, 80]
+    },
+    "grid_resolution": 10.0,
+    "wind_base_direction": [8.0, 2.0, 0.0],
+    "buildings": [
+      {
+        "id": "building_0",
+        "min": [45.2, 30.1, 0],
+        "max": [85.6, 70.3, 65.0]
+      }
+    ],
+    "wind_field_shape": [41, 41, 17]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `bounds.min` | [x, y, z] | Scene minimum corner (meters) |
+| `bounds.max` | [x, y, z] | Scene maximum corner (meters) |
+| `grid_resolution` | float | Pathfinding grid cell size (meters) |
+| `wind_base_direction` | [vx, vy, vz] | Base wind velocity (m/s) |
+| `buildings` | array | Building bounding boxes |
+| `buildings[].id` | string | Building identifier |
+| `buildings[].min` | [x, y, z] | Building minimum corner |
+| `buildings[].max` | [x, y, z] | Building maximum corner |
+| `wind_field_shape` | [nx, ny, nz] | Wind field grid dimensions |
+
+---
+
+#### 2. Get Wind Field
+
+**Request:**
+```json
+{"type": "get_wind_field", "downsample": 2}
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `downsample` | int | 1 | Sample every Nth point (2 = half resolution, reduces data 8x) |
+
+**Response:**
+```json
+{
+  "type": "wind_field",
+  "data": {
+    "bounds": {
+      "min": [0, 0, 0],
+      "max": [200, 200, 80]
+    },
+    "resolution": 10.0,
+    "shape": [21, 21, 9],
+    "downsample": 2,
+    "wind_vectors": [
+      [8.1, 2.3, 0.1],
+      [7.9, 2.1, 0.0],
+      ...
+    ],
+    "turbulence": [0.05, 0.08, 0.12, ...]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `resolution` | float | Distance between grid points (meters) |
+| `shape` | [nx, ny, nz] | Grid dimensions |
+| `wind_vectors` | [[vx,vy,vz], ...] | Flattened array of wind velocities (m/s) |
+| `turbulence` | [float, ...] | Flattened array of turbulence intensity (0-1) |
+
+**Array Layout:** C-order (row-major) - x varies fastest, then y, then z
+
+**Converting flat index to world position:**
+```javascript
+function indexToPosition(index, shape, bounds, resolution) {
+  const [nx, ny, nz] = shape;
+  const iz = Math.floor(index / (nx * ny));
+  const iy = Math.floor((index % (nx * ny)) / nx);
+  const ix = index % nx;
+
+  return {
+    x: bounds.min[0] + ix * resolution,
+    y: bounds.min[1] + iy * resolution,
+    z: bounds.min[2] + iz * resolution
+  };
+}
+
+// Example: Get wind at index 500
+const pos = indexToPosition(500, data.shape, data.bounds, data.resolution);
+const wind = data.wind_vectors[500];  // [vx, vy, vz]
+const turb = data.turbulence[500];    // 0-1
+```
+
+---
+
+#### 3. Get Everything (Scene + Wind Field)
+
+**Request:**
+```json
+{"type": "get_all", "downsample": 2}
+```
+
+**Response:**
+```json
+{
+  "type": "full_scene",
+  "data": {
+    "bounds": { "min": [...], "max": [...] },
+    "grid_resolution": 10.0,
+    "wind_base_direction": [8.0, 2.0, 0.0],
+    "buildings": [...],
+    "wind_field_shape": [41, 41, 17],
+    "wind_field": {
+      "bounds": {...},
+      "resolution": 10.0,
+      "shape": [21, 21, 9],
+      "wind_vectors": [...],
+      "turbulence": [...]
+    }
+  }
+}
+```
+
+---
+
+#### 4. Start Simulation
+
+**Request:**
+```json
+{
+  "type": "start",
+  "start": [180, 100, 40],
+  "end": [20, 100, 40],
+  "route_type": "both"
+}
+```
+
+| Parameter | Type | Options | Description |
+|-----------|------|---------|-------------|
+| `start` | [x, y, z] | - | Start position (meters) |
+| `end` | [x, y, z] | - | End position (meters) |
+| `route_type` | string | `"naive"`, `"optimized"`, `"both"` | Which routes to simulate |
+
+---
+
+#### 5. Paths Response
+
+Sent immediately after `start` request:
+
+```json
+{
+  "type": "paths",
+  "data": {
+    "naive": [
+      [180, 100, 40],
+      [175, 100, 40],
+      [170, 100, 40],
+      ...
+      [20, 100, 40]
+    ],
+    "optimized": [
+      [180, 100, 40],
+      [175, 105, 42],
+      [168, 112, 45],
+      ...
+      [20, 100, 40]
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `naive` | [[x,y,z], ...] | Smoothed waypoints for naive (distance-only) route |
+| `optimized` | [[x,y,z], ...] | Smoothed waypoints for wind-aware route |
+
+---
+
+#### 6. Simulation Start (per route)
+
+```json
+{
+  "type": "simulation_start",
+  "route": "naive",
+  "waypoint_count": 45
+}
+```
+
+---
+
+#### 7. Frame (streamed in real-time)
+
+Sent continuously during simulation at ~20 FPS (configurable via `--frame-delay`):
+
+```json
+{
+  "type": "frame",
+  "route": "naive",
+  "data": {
+    "time": 1.5,
+    "position": [175.2, 102.3, 40.0],
+    "velocity": [12.5, 0.3, 0.0],
+    "heading": [0.95, -0.31, 0.0],
+    "wind": [5.0, 2.0, 0.0],
+    "drift": [0.5, 1.8, 0.0],
+    "correction": [-0.05, -0.18, 0.0],
+    "effort": 0.45,
+    "airspeed": 15.0,
+    "groundspeed": 12.8,
+    "waypoint_index": 3,
+    "distance_to_waypoint": 12.5
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `route` | string | `"naive"` or `"optimized"` |
+| `time` | float | Simulation time (seconds) |
+| `position` | [x, y, z] | Drone world position (meters) |
+| `velocity` | [vx, vy, vz] | Ground velocity vector (m/s) |
+| `heading` | [hx, hy, hz] | Unit vector - direction drone nose is pointing |
+| `wind` | [wx, wy, wz] | Wind velocity at drone position (m/s) |
+| `drift` | [dx, dy, dz] | Crosswind component pushing drone off course |
+| `correction` | [cx, cy, cz] | Heading correction drone is applying |
+| `effort` | float | 0-1, how hard drone is working (for visualization) |
+| `airspeed` | float | Speed through air (m/s) |
+| `groundspeed` | float | Speed over ground (m/s) |
+| `waypoint_index` | int | Current target waypoint index |
+| `distance_to_waypoint` | float | Distance to next waypoint (meters) |
+
+**Visualization Notes:**
+- `heading` may differ from `velocity` direction - this is "crabbing" (angling into wind)
+- `effort` increases with headwind and course corrections
+- `drift` shows crosswind effect
+- `correction` shows how much the drone is compensating
+
+---
+
+#### 8. Simulation End (per route)
+
+```json
+{
+  "type": "simulation_end",
+  "route": "naive",
+  "flight_summary": {
+    "total_time": 45.2,
+    "total_distance": 450.0,
+    "average_groundspeed": 9.96,
+    "average_effort": 0.35,
+    "max_effort": 0.82,
+    "completed": true,
+    "waypoints_reached": 45,
+    "frame_count": 452
+  },
+  "metrics": {
+    "total_distance": 450.0,
+    "total_flight_time": 45.2,
+    "average_ground_speed": 9.96,
+    "energy_consumption": 1.85,
+    "average_power": 147.3,
+    "crash_probability": 0.12,
+    "max_turbulence_encountered": 0.45,
+    "max_wind_speed_encountered": 12.3,
+    "turbulence_zones_crossed": 2,
+    "headwind_segments": 28,
+    "tailwind_segments": 17
+  }
+}
+```
+
+**Flight Summary Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `total_time` | float | Flight duration (seconds) |
+| `total_distance` | float | Distance traveled (meters) |
+| `average_groundspeed` | float | Average speed over ground (m/s) |
+| `average_effort` | float | Average effort level (0-1) |
+| `max_effort` | float | Peak effort level (0-1) |
+| `completed` | bool | Whether drone reached destination |
+| `waypoints_reached` | int | Number of waypoints passed |
+| `frame_count` | int | Total frames in simulation |
+
+**Metrics Fields:**
+| Field | Type | Unit | Description |
+|-------|------|------|-------------|
+| `total_distance` | float | meters | Path length |
+| `total_flight_time` | float | seconds | Time to complete |
+| `average_ground_speed` | float | m/s | Average ground speed |
+| `energy_consumption` | float | Wh | Battery energy used |
+| `average_power` | float | Watts | Average power draw |
+| `crash_probability` | float | % | Estimated crash risk (0-100) |
+| `max_turbulence_encountered` | float | 0-1 | Peak turbulence on route |
+| `max_wind_speed_encountered` | float | m/s | Peak wind speed on route |
+| `turbulence_zones_crossed` | int | count | High-turbulence areas passed through |
+| `headwind_segments` | int | count | Path segments with headwind |
+| `tailwind_segments` | int | count | Path segments with tailwind |
+
+---
+
+#### 9. Complete
+
+Sent when all simulations finish:
+
+```json
+{
+  "type": "complete",
+  "metrics": {
+    "naive": {
+      "total_distance": 450.0,
+      "total_flight_time": 45.2,
+      "energy_consumption": 1.85,
+      "crash_probability": 0.12,
+      ...
+    },
+    "optimized": {
+      "total_distance": 485.0,
+      "total_flight_time": 38.5,
+      "energy_consumption": 1.42,
+      "crash_probability": 0.03,
+      ...
+    }
+  }
+}
+```
+
+---
+
+#### 10. Utility Messages
+
+**Ping/Pong:**
+```json
+{"type": "ping"}     // Client sends
+{"type": "pong"}     // Server responds
+```
+
+**Error:**
+```json
+{
+  "type": "error",
+  "message": "Missing start or end position"
+}
+```
+
+---
+
+### Coordinate System
+
+- **Origin**: `bounds.min` (typically [0, 0, 0])
+- **X-axis**: Increases eastward (primary wind direction)
+- **Y-axis**: Increases northward
+- **Z-axis**: Increases upward (altitude)
+- **Units**: Meters for position, m/s for velocity
+
+---
+
+### Frontend Implementation Checklist
+
+1. **Connect to WebSocket** at `ws://localhost:8765`
+
+2. **Fetch initial data:**
+   ```javascript
+   ws.send(JSON.stringify({type: "get_all", downsample: 2}));
+   ```
+
+3. **Render buildings** as 3D boxes from `data.buildings[]`
+
+4. **Render wind field** from `data.wind_field`:
+   - Convert each index to position using `indexToPosition()`
+   - Draw arrows/streamlines showing wind direction and magnitude
+   - Optionally color by turbulence
+
+5. **Start simulation:**
+   ```javascript
+   ws.send(JSON.stringify({
+     type: "start",
+     start: [180, 100, 40],
+     end: [20, 100, 40],
+     route_type: "both"
+   }));
+   ```
+
+6. **Handle `paths` message:**
+   - Draw naive path (e.g., red line)
+   - Draw optimized path (e.g., green line)
+
+7. **Handle `frame` messages:**
+   - Update drone position
+   - Rotate drone model to match `heading` (shows crabbing into wind)
+   - Visualize `effort` (color intensity, particles, trail effects)
+   - Optionally show `wind` vector at drone position
+
+8. **Handle `simulation_end` / `complete`:**
+   - Display metrics comparison panel
+   - Highlight improvements (time saved, energy saved, risk reduction)
