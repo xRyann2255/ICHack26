@@ -75,8 +75,8 @@ class ServerConfig:
     # Scene configuration (x, y_height, z_depth) - will be updated from STL bounds
     bounds_min: tuple = (0, 0, 0)
     bounds_max: tuple = (200, 80, 200)  # (x, y_height, z_depth)
-    grid_resolution: float = 10.0
-    wind_resolution: float = 5.0
+    grid_resolution: float = 20.0  # Larger = faster startup, smaller = finer paths
+    wind_resolution: float = 10.0
     base_wind: tuple = (8.0, 0.0, 2.0)  # (vx, vy_vertical, vz)
     random_seed: int = 42
 
@@ -163,13 +163,15 @@ class WebSocketServer:
         logger.info("Setting up routers...")
 
         calc = CostCalculator(self.wind_field, WeightConfig.speed_priority())
-        calc.precompute_edge_costs(self.grid, mesh=self.mesh)
+        # Pass existing collision_checker to avoid rebuilding voxel grid
+        calc.precompute_edge_costs(self.grid, collision_checker=self.collision_checker)
         logger.info(f"Computed {calc.edge_count} wind-aware edges")
 
         self.wind_router = DijkstraRouter(self.grid, calc, capture_interval=50)
 
         self.naive_router = NaiveRouter(self.grid, capture_interval=50)
-        self.naive_router.precompute_valid_edges(mesh=self.mesh)
+        # Pass existing collision_checker to avoid rebuilding voxel grid
+        self.naive_router.precompute_valid_edges(collision_checker=self.collision_checker)
 
         self.smoother = PathSmoother(points_per_segment=5)
         self.metrics_calc = MetricsCalculator(self.wind_field)
@@ -858,8 +860,8 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765, help="Port to bind to")
     parser.add_argument("--frame-delay", type=float, default=0.05, help="Delay between frames (seconds)")
     parser.add_argument("--stl", type=str, default="southken.stl", help="Path to STL file for scene geometry (default: southken.stl)")
-    parser.add_argument("--grid-resolution", type=float, default=10.0, help="Pathfinding grid resolution (meters)")
-    parser.add_argument("--wind-resolution", type=float, default=10.0, help="Wind field resolution (meters)")
+    parser.add_argument("--grid-resolution", type=float, default=20.0, help="Pathfinding grid resolution in meters (default: 20, smaller = finer paths but slower)")
+    parser.add_argument("--wind-resolution", type=float, default=10.0, help="Wind field resolution in meters (default: 10)")
 
     args = parser.parse_args()
 

@@ -47,7 +47,8 @@ class NaiveRouter:
     def precompute_valid_edges(
         self,
         buildings: Optional['BuildingCollection'] = None,
-        mesh: Optional['STLMesh'] = None
+        mesh: Optional['STLMesh'] = None,
+        collision_checker = None
     ) -> None:
         """
         Pre-compute which edges are valid (no collisions).
@@ -55,26 +56,45 @@ class NaiveRouter:
         Args:
             buildings: Buildings for collision checking (AABB-based)
             mesh: STL mesh for collision checking (triangle-based, more accurate)
+            collision_checker: Pre-built collision checker (preferred, avoids rebuilding voxel grid)
 
-        Note: If both are provided, mesh takes precedence.
+        Note: If collision_checker is provided, it takes precedence.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         from ..grid.collision import CollisionChecker
         from ..data.stl_loader import MeshCollisionChecker
 
-        collision_checker = None
-        if mesh:
-            collision_checker = MeshCollisionChecker(mesh)
-        elif buildings:
-            collision_checker = CollisionChecker(buildings)
+        # Use provided collision checker, or create one
+        if collision_checker is None:
+            if mesh:
+                logger.info("Building collision checker from mesh...")
+                collision_checker = MeshCollisionChecker(mesh)
+            elif buildings:
+                collision_checker = CollisionChecker(buildings)
 
         self._valid_edges = set()
+        valid_nodes = list(self.grid.valid_nodes())
+        total_nodes = len(valid_nodes)
 
-        for node in self.grid.valid_nodes():
+        logger.info(f"Pre-computing valid edges for naive router ({total_nodes} nodes)...")
+        last_log_pct = -10
+
+        for i, node in enumerate(valid_nodes):
+            # Log progress every 10%
+            pct = (i * 100) // total_nodes
+            if pct >= last_log_pct + 10:
+                logger.info(f"  Naive edge progress: {pct}% ({i}/{total_nodes} nodes, {len(self._valid_edges)} edges)")
+                last_log_pct = pct
+
             for neighbor in self.grid.get_neighbors(node):
                 if collision_checker:
                     if not collision_checker.node_edge_valid(node, neighbor):
                         continue
                 self._valid_edges.add((node.id, neighbor.id))
+
+        logger.info(f"Naive edge computation complete: {len(self._valid_edges)} valid edges")
 
     def _edge_valid(self, from_id: int, to_id: int) -> bool:
         """Check if an edge is valid."""
