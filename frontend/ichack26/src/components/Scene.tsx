@@ -1,6 +1,8 @@
 import { Suspense } from 'react'
 import { OrbitControls, Grid } from '@react-three/drei'
 import Terrain from './Terrain'
+import WindField from './WindField'
+import { useScene } from '../context/SceneContext'
 
 function LoadingBox() {
   return (
@@ -16,7 +18,7 @@ function Lighting() {
     <>
       <ambientLight intensity={0.4} />
       <directionalLight
-        position={[10, 20, 10]}
+        position={[100, 200, 100]}
         intensity={1}
         castShadow
         shadow-mapSize={[2048, 2048]}
@@ -26,12 +28,26 @@ function Lighting() {
 }
 
 export default function Scene() {
+  const { windFieldData } = useScene()
+
   return (
     <>
       <Lighting />
       <Suspense fallback={<LoadingBox />}>
         <Terrain />
       </Suspense>
+
+      {/* Wind field visualization */}
+      {windFieldData && (
+        <WindField
+          data={windFieldData}
+          visible={true}
+          colorMode="speed"
+          arrowScale={2.0}
+          opacity={0.8}
+          displayDownsample={2}
+        />
+      )}
 
       {/* Ground grid for reference */}
       <Grid

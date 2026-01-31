@@ -1181,47 +1181,7 @@ interface FrameData {
 
 ---
 
-#### Step 3: Scene Setup & Buildings
-
-**Goal:** Render the scene bounds and buildings as 3D boxes.
-
-**Tasks:**
-- [ ] Create `Buildings` component that renders boxes from scene data (SKIPPED - using STL terrain instead)
-- [x] Set up camera to view entire scene (position based on bounds)
-- [x] Add ground plane (Grid component)
-- [x] Add ambient + directional lighting
-- [ ] Style buildings (color, opacity, edges) (SKIPPED - using STL terrain instead)
-
-**Test:** See buildings rendered as 3D boxes matching backend data.
-
-**Files:**
-```
-src/components/
-├── Scene.tsx             # Main scene container
-├── Buildings.tsx         # Render building boxes
-├── Ground.tsx            # Ground plane
-└── Lighting.tsx          # Lights setup
-```
-
-**Code Pattern:**
-```tsx
-function Buildings({ buildings }: { buildings: Building[] }) {
-  return (
-    <>
-      {buildings.map((b) => (
-        <mesh key={b.id} position={center(b)}>
-          <boxGeometry args={size(b)} />
-          <meshStandardMaterial color="#666" />
-        </mesh>
-      ))}
-    </>
-  );
-}
-```
-
----
-
-#### Step 3B: STL Terrain Loading (South Kensington)
+#### Step 3: STL Terrain Loading (South Kensington)
 
 **Goal:** Load and render the `southken.stl` file as the terrain/building geometry for the demo area.
 
@@ -1362,12 +1322,12 @@ declare module 'three/examples/jsm/loaders/STLLoader' {
 **Goal:** Render wind vectors as arrows or lines showing wind direction/strength.
 
 **Tasks:**
-- [ ] Create `WindField` component
-- [ ] Convert flat array indices to 3D positions
-- [ ] Render arrows using instanced meshes (for performance)
-- [ ] Color by wind speed or turbulence
-- [ ] Add toggle to show/hide wind field
-- [ ] Downsample for performance (show every Nth arrow)
+- [x] Create `WindField` component
+- [x] Convert flat array indices to 3D positions
+- [x] Render arrows using instanced meshes (for performance)
+- [x] Color by wind speed or turbulence
+- [x] Add toggle to show/hide wind field
+- [x] Downsample for performance (show every Nth arrow)
 
 **Test:** See arrows throughout scene pointing in wind direction.
 

@@ -4,8 +4,8 @@
  * Provides scene data, wind field, and simulation state to all components.
  */
 
-import { createContext, useContext, ReactNode, useMemo, useCallback } from 'react';
-import { useWebSocket, type UseWebSocketReturn, type SimulationState } from '../hooks/useWebSocket';
+import { createContext, useContext, type ReactNode, useMemo, useCallback } from 'react';
+import { useWebSocket, type SimulationState } from '../hooks/useWebSocket';
 import type {
   ConnectionStatus,
   SceneData,

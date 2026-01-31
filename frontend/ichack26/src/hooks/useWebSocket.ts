@@ -11,7 +11,6 @@ import type {
   ClientMessage,
   SceneData,
   WindFieldData,
-  FullSceneData,
   PathsData,
   FrameData,
   RouteMetrics,
