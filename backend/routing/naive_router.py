@@ -53,6 +53,8 @@ class NaiveRouter:
         """
         Pre-compute which edges are valid (no collisions).
 
+        Uses batch collision checking when available for much faster computation.
+
         Args:
             buildings: Buildings for collision checking (AABB-based)
             mesh: STL mesh for collision checking (triangle-based, more accurate)
@@ -61,10 +63,14 @@ class NaiveRouter:
         Note: If collision_checker is provided, it takes precedence.
         """
         import logging
+        import time
+        import numpy as np
         logger = logging.getLogger(__name__)
 
         from ..grid.collision import CollisionChecker
         from ..data.stl_loader import MeshCollisionChecker
+
+        start_time = time.time()
 
         # Use provided collision checker, or create one
         if collision_checker is None:
@@ -79,22 +85,142 @@ class NaiveRouter:
         total_nodes = len(valid_nodes)
 
         logger.info(f"Pre-computing valid edges for naive router ({total_nodes} nodes)...")
-        last_log_pct = -10
 
-        for i, node in enumerate(valid_nodes):
-            # Log progress every 10%
-            pct = (i * 100) // total_nodes
-            if pct >= last_log_pct + 10:
-                logger.info(f"  Naive edge progress: {pct}% ({i}/{total_nodes} nodes, {len(self._valid_edges)} edges)")
-                last_log_pct = pct
-
+        # First, collect ALL potential edges
+        potential_edges = []
+        for node in valid_nodes:
             for neighbor in self.grid.get_neighbors(node):
-                if collision_checker:
-                    if not collision_checker.node_edge_valid(node, neighbor):
-                        continue
-                self._valid_edges.add((node.id, neighbor.id))
+                if neighbor.is_valid:
+                    potential_edges.append((
+                        node.id,
+                        neighbor.id,
+                        [node.position.x, node.position.y, node.position.z],
+                        [neighbor.position.x, neighbor.position.y, neighbor.position.z]
+                    ))
 
-        logger.info(f"Naive edge computation complete: {len(self._valid_edges)} valid edges")
+        logger.info(f"  Collected {len(potential_edges)} potential edges")
+
+        # Check if batch collision is available
+        has_batch = collision_checker and hasattr(collision_checker, 'edges_valid_batch')
+
+        if has_batch and len(potential_edges) > 0:
+            # Use fast batch collision checking
+            logger.info("  Using batch collision checking...")
+            starts = np.array([e[2] for e in potential_edges], dtype=np.float64)
+            ends = np.array([e[3] for e in potential_edges], dtype=np.float64)
+
+            # Process in chunks
+            chunk_size = 100000
+            valid_mask = np.zeros(len(potential_edges), dtype=bool)
+
+            for chunk_start in range(0, len(potential_edges), chunk_size):
+                chunk_end = min(chunk_start + chunk_size, len(potential_edges))
+                valid_mask[chunk_start:chunk_end] = collision_checker.edges_valid_batch(
+                    starts[chunk_start:chunk_end],
+                    ends[chunk_start:chunk_end]
+                )
+
+            # Add valid edges to set
+            for edge, valid in zip(potential_edges, valid_mask):
+                if valid:
+                    self._valid_edges.add((edge[0], edge[1]))
+        elif collision_checker:
+            # Fallback to sequential
+            logger.info("  Using sequential collision checking...")
+            last_log_pct = -10
+            for i, (node_a_id, node_b_id, start, end) in enumerate(potential_edges):
+                pct = (i * 100) // len(potential_edges)
+                if pct >= last_log_pct + 10:
+                    logger.info(f"  Naive edge progress: {pct}% ({i}/{len(potential_edges)} edges)")
+                    last_log_pct = pct
+
+                from ..grid.node import Vector3 as V3
+                if not collision_checker.edge_intersects_building(V3(*start), V3(*end)):
+                    self._valid_edges.add((node_a_id, node_b_id))
+        else:
+            # No collision checking - all edges valid
+            for edge in potential_edges:
+                self._valid_edges.add((edge[0], edge[1]))
+
+        elapsed = time.time() - start_time
+        logger.info(f"Naive edge computation complete: {len(self._valid_edges)} valid edges in {elapsed:.2f}s")
+
+    def precompute_valid_edges_parallel(
+        self,
+        buildings: Optional['BuildingCollection'] = None,
+        mesh: Optional['STLMesh'] = None,
+        collision_checker = None,
+        num_workers: int = None
+    ) -> None:
+        """
+        Pre-compute valid edges using parallel processing.
+
+        Args:
+            buildings: Buildings for collision checking (AABB-based)
+            mesh: STL mesh for collision checking (triangle-based)
+            collision_checker: Pre-built collision checker (preferred)
+            num_workers: Number of parallel workers (default: CPU count)
+        """
+        import logging
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import os
+
+        logger = logging.getLogger(__name__)
+
+        from ..grid.collision import CollisionChecker
+        from ..data.stl_loader import MeshCollisionChecker
+
+        start_time = time.time()
+
+        # Use provided collision checker, or create one
+        if collision_checker is None:
+            if mesh:
+                logger.info("Building collision checker from mesh...")
+                collision_checker = MeshCollisionChecker(mesh)
+            elif buildings:
+                collision_checker = CollisionChecker(buildings)
+
+        self._valid_edges = set()
+        valid_nodes = list(self.grid.valid_nodes())
+        total_nodes = len(valid_nodes)
+
+        if num_workers is None:
+            num_workers = os.cpu_count() or 4
+
+        logger.info(f"Pre-computing valid edges for naive router ({total_nodes} nodes, {num_workers} workers)...")
+
+        # Process in chunks
+        chunk_size = max(100, total_nodes // (num_workers * 4))
+        chunks = [valid_nodes[i:i + chunk_size] for i in range(0, total_nodes, chunk_size)]
+
+        def process_chunk(nodes):
+            """Process a chunk of nodes and return valid edges."""
+            chunk_edges = []
+            for node in nodes:
+                for neighbor in self.grid.get_neighbors(node):
+                    if collision_checker:
+                        if not collision_checker.node_edge_valid(node, neighbor):
+                            continue
+                    chunk_edges.append((node.id, neighbor.id))
+            return chunk_edges
+
+        # Process chunks in parallel
+        all_edges = []
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = {executor.submit(process_chunk, chunk): i for i, chunk in enumerate(chunks)}
+            completed = 0
+            for future in as_completed(futures):
+                chunk_edges = future.result()
+                all_edges.extend(chunk_edges)
+                completed += 1
+                if completed % 10 == 0:
+                    logger.info(f"  Chunk progress: {completed}/{len(chunks)} ({len(all_edges)} edges so far)")
+
+        self._valid_edges = set(all_edges)
+
+        elapsed = time.time() - start_time
+        logger.info(f"Naive edge computation complete: {len(self._valid_edges)} valid edges in {elapsed:.2f}s")
 
     def _edge_valid(self, from_id: int, to_id: int) -> bool:
         """Check if an edge is valid."""

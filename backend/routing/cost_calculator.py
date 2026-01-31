@@ -13,6 +13,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, TYPE_CHECKING
 import math
+import numpy as np
 
 from ..grid.node import Vector3, GridNode
 from ..grid.grid_3d import Grid3D
@@ -401,6 +402,259 @@ class CostCalculator:
             progress_callback(total_nodes, total_nodes)
 
         logger.info(f"Edge cost computation complete: {len(self._edge_costs)} valid edges")
+        return self._edge_costs
+
+    def precompute_edge_costs_vectorized(
+        self,
+        grid: Grid3D,
+        buildings: Optional['BuildingCollection'] = None,
+        mesh: Optional['STLMesh'] = None,
+        collision_checker: Optional['MeshCollisionChecker'] = None,
+        progress_callback: Optional[callable] = None,
+        batch_size: int = 50000,
+        use_gpu: bool = True
+    ) -> Dict[Tuple[int, int], float]:
+        """
+        Pre-compute costs for all valid edges using vectorized NumPy operations.
+
+        This is significantly faster than the sequential version for large grids.
+
+        Args:
+            grid: 3D grid with nodes
+            buildings: Buildings for collision checking (AABB-based)
+            mesh: STL mesh for collision checking (triangle-based)
+            collision_checker: Pre-built collision checker (preferred)
+            progress_callback: Called with (current, total) for progress
+            batch_size: Number of edges to process in each batch
+            use_gpu: If True, attempt to use GPU acceleration (requires CuPy)
+
+        Returns:
+            Dictionary mapping (node_a_id, node_b_id) to cost
+        """
+        import logging
+        import time
+        logger = logging.getLogger(__name__)
+
+        from ..grid.collision import CollisionChecker
+        from ..data.stl_loader import MeshCollisionChecker
+
+        start_time = time.time()
+
+        # Use provided collision checker, or create one
+        if collision_checker is None:
+            if mesh:
+                logger.info("Building collision checker from mesh...")
+                collision_checker = MeshCollisionChecker(mesh)
+            elif buildings:
+                collision_checker = CollisionChecker(buildings)
+
+        # Step 1: Collect all potential edges and batch collision check
+        logger.info("Collecting potential edges...")
+        valid_nodes = list(grid.valid_nodes())
+        total_nodes = len(valid_nodes)
+
+        # First, collect ALL potential edges (without collision checking)
+        potential_edges = []  # [(node_a_id, node_b_id, start_pos, end_pos), ...]
+
+        for i, node in enumerate(valid_nodes):
+            if progress_callback and i % 1000 == 0:
+                progress_callback(i, total_nodes * 2)
+
+            for neighbor in grid.get_neighbors(node):
+                # Skip invalid nodes
+                if not neighbor.is_valid:
+                    continue
+                potential_edges.append((
+                    node.id,
+                    neighbor.id,
+                    [node.position.x, node.position.y, node.position.z],
+                    [neighbor.position.x, neighbor.position.y, neighbor.position.z]
+                ))
+
+        logger.info(f"Collected {len(potential_edges)} potential edges")
+
+        # Step 1b: Batch collision checking
+        if collision_checker and len(potential_edges) > 0:
+            logger.info("Running batch collision checking...")
+            collision_start = time.time()
+
+            # Check if batch method is available
+            has_batch = hasattr(collision_checker, 'edges_valid_batch')
+
+            if has_batch:
+                # Use fast batch collision checking
+                starts = np.array([e[2] for e in potential_edges], dtype=np.float64)
+                ends = np.array([e[3] for e in potential_edges], dtype=np.float64)
+
+                # Process in chunks to manage memory
+                chunk_size = 100000
+                valid_mask = np.zeros(len(potential_edges), dtype=bool)
+
+                for chunk_start in range(0, len(potential_edges), chunk_size):
+                    chunk_end = min(chunk_start + chunk_size, len(potential_edges))
+                    valid_mask[chunk_start:chunk_end] = collision_checker.edges_valid_batch(
+                        starts[chunk_start:chunk_end],
+                        ends[chunk_start:chunk_end]
+                    )
+                    if progress_callback:
+                        progress_callback(
+                            total_nodes + (chunk_end * total_nodes // len(potential_edges)),
+                            total_nodes * 2
+                        )
+
+                # Filter to valid edges only
+                edge_list = [e for e, valid in zip(potential_edges, valid_mask) if valid]
+                collision_time = time.time() - collision_start
+                logger.info(f"Batch collision check: {len(edge_list)}/{len(potential_edges)} edges valid in {collision_time:.2f}s")
+            else:
+                # Fallback to sequential collision checking
+                logger.info("Using sequential collision checking (batch not available)...")
+                edge_list = []
+                for i, edge in enumerate(potential_edges):
+                    if progress_callback and i % 10000 == 0:
+                        progress_callback(total_nodes + i * total_nodes // len(potential_edges), total_nodes * 2)
+
+                    from ..grid.node import Vector3 as V3
+                    start = V3(*edge[2])
+                    end = V3(*edge[3])
+                    if not collision_checker.edge_intersects_building(start, end):
+                        edge_list.append(edge)
+                collision_time = time.time() - collision_start
+                logger.info(f"Sequential collision check: {len(edge_list)} valid in {collision_time:.2f}s")
+        else:
+            edge_list = potential_edges
+
+        edge_collection_time = time.time() - start_time
+        logger.info(f"Collected {len(edge_list)} valid edges in {edge_collection_time:.2f}s")
+
+        if not edge_list:
+            self._edge_costs = {}
+            return self._edge_costs
+
+        # Try to enable GPU if requested
+        gpu_enabled = False
+        if use_gpu:
+            gpu_enabled = self.wind_field.enable_gpu()
+            if gpu_enabled:
+                logger.info("GPU acceleration enabled for wind field queries")
+            else:
+                logger.info("GPU not available, using CPU vectorization")
+
+        # Step 2: Vectorized cost computation in batches
+        logger.info(f"Computing edge costs in batches of {batch_size}...")
+        batch_start_time = time.time()
+
+        self._edge_costs = {}
+        total_edges = len(edge_list)
+
+        # Get weight values
+        w_distance = self.get_weight("distance")
+        w_headwind = self.get_weight("headwind")
+        w_turbulence = self.get_weight("turbulence")
+
+        # Get turbulence parameters from component
+        turb_threshold = 0.2
+        turb_exponent = 2.0
+        tailwind_benefit = 0.5
+        for comp in self.components:
+            if comp.name == "turbulence":
+                turb_threshold = getattr(comp, 'threshold', 0.2)
+                turb_exponent = getattr(comp, 'exponent', 2.0)
+            if comp.name == "headwind":
+                tailwind_benefit = getattr(comp, 'tailwind_benefit', 0.5)
+
+        for batch_start in range(0, total_edges, batch_size):
+            batch_end = min(batch_start + batch_size, total_edges)
+            batch = edge_list[batch_start:batch_end]
+            batch_len = len(batch)
+
+            if progress_callback:
+                progress_callback(total_nodes + batch_start, total_nodes * 2)
+
+            # Extract positions as numpy arrays
+            start_positions = np.array([e[2] for e in batch], dtype=np.float64)
+            end_positions = np.array([e[3] for e in batch], dtype=np.float64)
+
+            # Compute midpoints
+            midpoints = (start_positions + end_positions) * 0.5
+
+            # Compute distances
+            diff = end_positions - start_positions
+            distances = np.sqrt(np.sum(diff ** 2, axis=1))
+
+            # Compute travel directions (normalized)
+            # Avoid division by zero for very short edges
+            safe_distances = np.maximum(distances, 1e-6)
+            travel_dirs = diff / safe_distances[:, np.newaxis]
+
+            # Initialize total costs with distance component
+            total_costs = np.zeros(batch_len, dtype=np.float64)
+            if w_distance > 0:
+                total_costs += w_distance * distances
+
+            # Headwind cost (vectorized)
+            if w_headwind > 0:
+                # Get wind at midpoints (use GPU if available)
+                if gpu_enabled:
+                    wind_at_mid = self.wind_field.get_wind_batch_gpu(midpoints)
+                else:
+                    wind_at_mid = self.wind_field.get_wind_batch(midpoints)
+
+                # Wind alignment: dot product of wind and travel direction
+                # Positive = tailwind, Negative = headwind
+                wind_alignment = np.sum(wind_at_mid * travel_dirs, axis=1)
+
+                # Headwind: cost = -alignment * distance (when alignment < 0)
+                # Tailwind: cost = -tailwind_benefit * alignment * distance (when alignment > 0)
+                headwind_costs = np.where(
+                    wind_alignment < 0,
+                    -wind_alignment * distances,  # Headwind penalty
+                    -tailwind_benefit * wind_alignment * distances  # Tailwind benefit (negative cost)
+                )
+                total_costs += w_headwind * headwind_costs
+
+            # Turbulence cost (vectorized)
+            if w_turbulence > 0:
+                # Get turbulence at start, end, and midpoint (use GPU if available)
+                if gpu_enabled:
+                    turb_start = self.wind_field.get_turbulence_batch_gpu(start_positions)
+                    turb_end = self.wind_field.get_turbulence_batch_gpu(end_positions)
+                    turb_mid = self.wind_field.get_turbulence_batch_gpu(midpoints)
+                else:
+                    turb_start = self.wind_field.get_turbulence_batch(start_positions)
+                    turb_end = self.wind_field.get_turbulence_batch(end_positions)
+                    turb_mid = self.wind_field.get_turbulence_batch(midpoints)
+
+                # Max turbulence along edge
+                max_turb = np.maximum(np.maximum(turb_start, turb_end), turb_mid)
+
+                # Apply threshold and exponent
+                excess = np.maximum(0, max_turb - turb_threshold)
+                turb_costs = (excess ** turb_exponent) * distances
+                total_costs += w_turbulence * turb_costs
+
+            # Ensure non-negative costs
+            total_costs = np.maximum(0.0, total_costs)
+
+            # Store results
+            for idx, edge in enumerate(batch):
+                self._edge_costs[(edge[0], edge[1])] = total_costs[idx]
+
+        total_time = time.time() - start_time
+        batch_time = time.time() - batch_start_time
+        logger.info(f"Edge cost computation complete: {len(self._edge_costs)} edges in {total_time:.2f}s")
+        logger.info(f"  - Edge collection: {edge_collection_time:.2f}s")
+        logger.info(f"  - Batch cost computation: {batch_time:.2f}s")
+        if gpu_enabled:
+            logger.info(f"  - GPU acceleration: enabled")
+
+        # Clean up GPU memory
+        if gpu_enabled:
+            self.wind_field.disable_gpu()
+
+        if progress_callback:
+            progress_callback(total_nodes * 2, total_nodes * 2)
+
         return self._edge_costs
 
     def get_edge_cost(self, node_a_id: int, node_b_id: int) -> Optional[float]:
