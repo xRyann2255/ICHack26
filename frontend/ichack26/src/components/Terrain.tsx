@@ -68,6 +68,7 @@ function Terrain({
     <mesh
       geometry={centeredGeometry}
       scale={[scale, scale, scale]}
+      rotation={[-Math.PI / 2, 0, 0]}
       castShadow
       receiveShadow
     >
