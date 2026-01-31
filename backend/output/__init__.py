@@ -1,1 +1,2 @@
-from .serializer import RouteSerializer
+# Will be imported when implemented:
+# from .serializer import RouteSerializer

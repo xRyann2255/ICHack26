@@ -373,18 +373,18 @@ When implementing features, **build incrementally** with discrete, testable step
 
 Follow this sequence for the routing algorithm:
 
-1. **Step 1: Core data structures** - `Vector3`, `GridNode` classes
-2. **Step 2: Grid creation** - `Grid3D` with node generation and neighbor lookup
-3. **Step 3: Building geometry** - `Building` class with collision detection
-4. **Step 4: Mock data generator** - Generate test wind/building data
-5. **Step 5: Wind field** - `WindField` class with interpolation
-6. **Step 6: Cost calculator** - Edge cost computation with wind awareness
-7. **Step 7: Dijkstra router** - Pathfinding with exploration history
-8. **Step 8: Naive router** - A* comparison baseline
-9. **Step 9: Path smoother** - Spline interpolation
-10. **Step 10: Metrics calculator** - All 5 metrics from spec
-11. **Step 11: Serializer** - JSON output for frontend
-12. **Step 12: Main entry point** - CLI integration
+1. [x] **Step 1: Core data structures** - `Vector3`, `GridNode` classes
+2. [x] **Step 2: Grid creation** - `Grid3D` with node generation and neighbor lookup
+3. [x] **Step 3: Building geometry** - `Building` class with collision detection
+4. [ ] **Step 4: Mock data generator** - Generate test wind/building data
+5. [ ] **Step 5: Wind field** - `WindField` class with interpolation
+6. [ ] **Step 6: Cost calculator** - Edge cost computation with wind awareness
+7. [ ] **Step 7: Dijkstra router** - Pathfinding with exploration history
+8. [ ] **Step 8: Naive router** - A* comparison baseline
+9. [ ] **Step 9: Path smoother** - Spline interpolation
+10. [ ] **Step 10: Metrics calculator** - All 5 metrics from spec
+11. [ ] **Step 11: Serializer** - JSON output for frontend
+12. [ ] **Step 12: Main entry point** - CLI integration
 
 ### Verification at Each Step
 

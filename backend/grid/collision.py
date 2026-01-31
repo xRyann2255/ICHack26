@@ -18,25 +18,13 @@ class CollisionChecker:
         """Check if a point is inside any building."""
         return self.buildings.contains_point(point)
 
-    def edge_intersects_building(self, start: Vector3, end: Vector3,
-                                 num_samples: int = 5) -> bool:
+    def edge_intersects_building(self, start: Vector3, end: Vector3) -> bool:
         """
         Check if an edge intersects any building.
 
-        Uses ray marching with multiple sample points along the edge.
+        Uses proper AABB-segment intersection test.
         """
-        # Check endpoints first
-        if self.point_in_building(start) or self.point_in_building(end):
-            return True
-
-        # Sample points along the edge
-        for i in range(1, num_samples):
-            t = i / num_samples
-            point = start + (end - start) * t
-            if self.point_in_building(point):
-                return True
-
-        return False
+        return self.buildings.intersects_segment(start, end)
 
     def node_edge_valid(self, node_a: GridNode, node_b: GridNode) -> bool:
         """Check if an edge between two nodes is valid (no collision)."""
