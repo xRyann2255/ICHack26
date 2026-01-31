@@ -378,7 +378,7 @@ Follow this sequence for the routing algorithm:
 3. [x] **Step 3: Building geometry** - `Building` class with collision detection
 4. [x] **Step 4: Mock data generator** - Generate test wind/building data
 5. [x] **Step 5: Wind field** - `WindField` class with interpolation
-6. [ ] **Step 6: Cost calculator** - Edge cost computation with wind awareness
+6. [x] **Step 6: Cost calculator** - Edge cost computation with wind awareness
 7. [ ] **Step 7: Dijkstra router** - Pathfinding with exploration history
 8. [ ] **Step 8: Naive router** - A* comparison baseline
 9. [ ] **Step 9: Path smoother** - Spline interpolation
