@@ -3,6 +3,7 @@ import { OrbitControls, Grid } from '@react-three/drei'
 import Terrain from './Terrain'
 import WindField from './WindField'
 import { DualPaths } from './FlightPath'
+import { DualDrones } from './Drone'
 import { useScene } from '../context/SceneContext'
 
 function LoadingBox() {
@@ -29,7 +30,7 @@ function Lighting() {
 }
 
 export default function Scene() {
-  const { windFieldData, paths } = useScene()
+  const { windFieldData, paths, currentFrame, simulation } = useScene()
 
   return (
     <>
@@ -59,6 +60,18 @@ export default function Scene() {
           showOptimized={true}
           lineWidth={4}
           showWaypoints={false}
+        />
+      )}
+
+      {/* Animated drones following their routes */}
+      {(simulation.status === 'simulating' || simulation.status === 'complete') && (
+        <DualDrones
+          naiveFrame={currentFrame.naive}
+          optimizedFrame={currentFrame.optimized}
+          showNaive={true}
+          showOptimized={true}
+          scale={2}
+          showTrail={true}
         />
       )}
 

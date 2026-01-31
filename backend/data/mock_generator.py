@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 import os
 
 from ..grid.node import Vector3
 from .building_geometry import Building, BuildingCollection
 from .wind_field import WindField
+from .stl_loader import STLLoader, STLMesh, MeshCollisionChecker
 
 
 class MockDataGenerator:
@@ -100,7 +101,7 @@ class MockDataGenerator:
         buildings: BuildingCollection,
         resolution: float = 5.0,
         base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0),
-        altitude_factor: float = 0.02
+        altitude_factor: float = 0.005
     ) -> WindField:
         """
         Generate a mock wind field with realistic effects.
@@ -313,3 +314,161 @@ class MockDataGenerator:
         print(f"  Saved wind field to {wind_path}")
 
         return buildings, wind_field
+
+    def load_stl_scene(
+        self,
+        stl_path: str,
+        wind_resolution: float = 10.0,
+        base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0),
+        flight_ceiling: float = 100.0,
+        margin: float = 50.0
+    ) -> Tuple[STLMesh, WindField, Tuple[Vector3, Vector3]]:
+        """
+        Load scene from STL file and generate wind field.
+
+        The STL mesh is used directly for collision detection (more accurate
+        than AABB approximations). Wind field is generated based on mesh bounds.
+
+        Args:
+            stl_path: Path to STL file
+            wind_resolution: Wind field grid resolution in meters
+            base_wind: Base wind velocity (vx, vy_vertical, vz)
+            flight_ceiling: Maximum flight altitude above mesh top
+            margin: Margin around mesh bounds for scene
+
+        Returns:
+            Tuple of (STLMesh, WindField, (bounds_min, bounds_max))
+        """
+        print(f"Loading STL from {stl_path}...")
+        mesh = STLLoader.load_stl(
+            stl_path,
+            convert_coords=True,
+            center_xy=True,
+            ground_at_zero=True
+        )
+
+        # Calculate scene bounds from mesh with margin
+        mesh_size = mesh.max_bounds - mesh.min_bounds
+        bounds_min = Vector3(
+            mesh.min_bounds[0] - margin,
+            0,  # Ground level
+            mesh.min_bounds[2] - margin
+        )
+        bounds_max = Vector3(
+            mesh.max_bounds[0] + margin,
+            mesh.max_bounds[1] + flight_ceiling,  # Ceiling above buildings
+            mesh.max_bounds[2] + margin
+        )
+
+        print(f"Scene bounds: {bounds_min} to {bounds_max}")
+
+        # Generate wind field for the scene
+        # Note: We can't easily model building effects on wind without AABBs,
+        # so we use a simplified model with altitude-based wind increase
+        print(f"Generating wind field (resolution={wind_resolution}m)...")
+        wind_field = self._generate_wind_field_for_mesh(
+            bounds_min, bounds_max, mesh,
+            resolution=wind_resolution,
+            base_wind=base_wind
+        )
+        print(f"Wind field: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
+
+        return mesh, wind_field, (bounds_min, bounds_max)
+
+    def _generate_wind_field_for_mesh(
+        self,
+        bounds_min: Vector3,
+        bounds_max: Vector3,
+        mesh: STLMesh,
+        resolution: float = 10.0,
+        base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0),
+        altitude_factor: float = 0.02
+    ) -> WindField:
+        """
+        Generate wind field for an STL mesh scene.
+
+        Uses mesh geometry to create realistic wind effects:
+        - Higher wind at altitude
+        - Reduced wind/turbulence near mesh surfaces
+        - Basic wake effects downwind of obstacles
+
+        Args:
+            bounds_min: Scene minimum bounds
+            bounds_max: Scene maximum bounds
+            mesh: STL mesh for collision/proximity checks
+            resolution: Grid resolution in meters
+            base_wind: Base wind velocity
+            altitude_factor: Wind increase per meter of altitude
+
+        Returns:
+            WindField with generated data
+        """
+        # Calculate grid dimensions
+        size = bounds_max - bounds_min
+        nx = max(2, int(size.x / resolution) + 1)
+        ny = max(2, int(size.y / resolution) + 1)
+        nz = max(2, int(size.z / resolution) + 1)
+
+        # Initialize arrays
+        wind_data = np.zeros((nx, ny, nz, 3), dtype=np.float32)
+        turbulence_data = np.zeros((nx, ny, nz), dtype=np.float32)
+
+        base_wind_vec = np.array(base_wind, dtype=np.float32)
+        base_wind_magnitude = np.linalg.norm([base_wind_vec[0], base_wind_vec[2]])
+
+        mesh_top = mesh.max_bounds[1]  # Top of buildings
+
+        # Generate wind for each cell
+        for ix in range(nx):
+            for iy in range(ny):
+                for iz in range(nz):
+                    pos = Vector3(
+                        bounds_min.x + ix * resolution,
+                        bounds_min.y + iy * resolution,
+                        bounds_min.z + iz * resolution
+                    )
+
+                    # Start with base wind + altitude effect
+                    altitude = pos.y
+                    altitude_multiplier = 1.0 + altitude * altitude_factor
+                    wind = base_wind_vec * altitude_multiplier
+
+                    # Base turbulence (low)
+                    turbulence = 0.05
+
+                    # Check if near mesh surface
+                    # Sample nearby points to estimate distance to mesh
+                    in_mesh = mesh.point_inside(pos)
+                    if in_mesh:
+                        # Inside building - no wind
+                        wind = np.zeros(3, dtype=np.float32)
+                        turbulence = 0.0
+                    else:
+                        # Check proximity to mesh using nearby collision checks
+                        near_surface = False
+                        for offset in [
+                            Vector3(resolution, 0, 0),
+                            Vector3(-resolution, 0, 0),
+                            Vector3(0, -resolution, 0),  # Only check down
+                            Vector3(0, 0, resolution),
+                            Vector3(0, 0, -resolution),
+                        ]:
+                            test_pos = pos + offset
+                            if mesh.segment_intersects(pos, test_pos):
+                                near_surface = True
+                                break
+
+                        if near_surface:
+                            # Near building surface - add turbulence, reduce wind
+                            if altitude < mesh_top:
+                                wind = wind * 0.6
+                                turbulence = 0.4
+                            else:
+                                # Above buildings but near surface
+                                wind = wind * 0.8
+                                turbulence = 0.25
+
+                    wind_data[ix, iy, iz] = wind
+                    turbulence_data[ix, iy, iz] = min(1.0, turbulence)
+
+        return WindField(wind_data, turbulence_data, bounds_min, bounds_max)

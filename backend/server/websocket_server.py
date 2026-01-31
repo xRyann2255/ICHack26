@@ -375,12 +375,14 @@ class WebSocketServer:
             metrics = self.metrics_calc.calculate(path)
             all_metrics[route_name] = metrics.to_dict()
 
+            logger.info(f"Sending simulation_end for {route_name}")
             await self.send_json(websocket, {
                 "type": "simulation_end",
                 "route": route_name,
                 "flight_summary": flight_data.to_dict()["summary"],
                 "metrics": metrics.to_dict()
             })
+            logger.info(f"Route {route_name} done, completed={flight_data.completed}")
 
         # Send completion with comparison
         await self.send_json(websocket, {
@@ -405,17 +407,32 @@ class WebSocketServer:
         )
 
         # We'll manually step through simulation to stream frames
-        from ..simulation.flight_simulator import DroneState, FlightFrame
+        from ..simulation.flight_simulator import DroneState, FlightFrame, FlightData
 
         if len(path) < 2:
-            return
+            logger.warning(f"Route {route_name} has less than 2 waypoints, skipping simulation")
+            return FlightData(
+                frames=[],
+                total_time=0,
+                total_distance=0,
+                average_groundspeed=0,
+                average_effort=0,
+                max_effort=0,
+                completed=True,
+                waypoints_reached=len(path)
+            )
+
+        # Dynamic airspeed parameters - drone can boost power when needed
+        base_airspeed = sim_params.max_airspeed  # Normal cruising speed (15 m/s)
+        max_boost_airspeed = base_airspeed * 4.0  # Can boost up to 4x (60 m/s)
+        min_desired_groundspeed = 8.0  # Target at least 8 m/s ground speed
 
         # Initialize state
         state = DroneState(
             position=Vector3(path[0].x, path[0].y, path[0].z),
             velocity=Vector3(0, 0, 0),
             heading=self._direction_to(path[0], path[1]),
-            airspeed=sim_params.max_airspeed,
+            airspeed=base_airspeed,
             target_waypoint_index=1
         )
 
@@ -425,6 +442,7 @@ class WebSocketServer:
 
         while time < sim_params.max_time:
             if state.target_waypoint_index >= len(path):
+                logger.info(f"Route {route_name} complete: reached all {len(path)} waypoints in {time:.1f}s")
                 break
 
             target = path[state.target_waypoint_index]
@@ -433,11 +451,59 @@ class WebSocketServer:
             to_target = target - state.position
             distance_to_target = to_target.magnitude()
 
-            if distance_to_target < sim_params.waypoint_threshold:
+            # Advance through any waypoints that are already reached
+            # (handles case where multiple waypoints are close together)
+            waypoints_skipped = 0
+            while distance_to_target < sim_params.waypoint_threshold:
                 state.target_waypoint_index += 1
-                continue
+                waypoints_skipped += 1
+                if state.target_waypoint_index >= len(path):
+                    break
+                target = path[state.target_waypoint_index]
+                to_target = target - state.position
+                distance_to_target = to_target.magnitude()
+                # Safety limit to prevent infinite loop
+                if waypoints_skipped > 100:
+                    logger.warning("Too many waypoints skipped, breaking")
+                    break
 
+            if state.target_waypoint_index >= len(path):
+                logger.info(f"Route {route_name} complete: reached final waypoint after skipping, time={time:.1f}s")
+                break
+
+            # Get direction to target (with safety check for near-zero distance)
             desired_direction = to_target.normalized()
+            if desired_direction.magnitude() < 0.1:
+                # Invalid direction (target too close), use current heading
+                desired_direction = state.heading
+
+            # Second fallback: if heading is also invalid, use direction to final destination
+            if desired_direction.magnitude() < 0.1:
+                final_target = path[-1]
+                to_final = final_target - state.position
+                desired_direction = to_final.normalized()
+                logger.debug(f"Using direction to final target: {desired_direction.to_list()}")
+
+            # Last resort fallback: if still invalid, use a fixed direction
+            if desired_direction.magnitude() < 0.1:
+                # Use negative X direction (typical end is at low X)
+                desired_direction = Vector3(-1, 0, 0)
+                logger.warning(f"All direction fallbacks failed, using fixed direction")
+
+            # Calculate headwind component to determine required airspeed
+            headwind_component = -wind.dot(desired_direction)  # Positive = headwind
+
+            # Dynamically adjust airspeed based on headwind
+            # We want: groundspeed = airspeed - headwind >= min_desired_groundspeed
+            # So: airspeed >= headwind + min_desired_groundspeed
+            required_airspeed = headwind_component + min_desired_groundspeed
+
+            # Clamp to allowed range
+            state.airspeed = max(base_airspeed, min(max_boost_airspeed, required_airspeed))
+
+            # Log when boosting
+            if state.airspeed > base_airspeed * 1.1:
+                logger.debug(f"Boosting airspeed to {state.airspeed:.1f} m/s (headwind: {headwind_component:.1f} m/s)")
 
             # Compute corrected heading
             heading, correction = self._compute_corrected_heading(
@@ -450,10 +516,27 @@ class WebSocketServer:
                 sim_params.max_turn_rate * sim_params.timestep
             )
 
-            # Compute velocities
+            # Safety check: ensure heading is never zero
+            if state.heading.magnitude() < 0.1:
+                state.heading = desired_direction
+                logger.debug(f"Heading was zero, reset to desired_direction: {state.heading.to_list()}")
+
+            # Compute velocities with boosted airspeed
             air_velocity = state.heading * state.airspeed
             ground_velocity = air_velocity + wind
             groundspeed = ground_velocity.magnitude()
+
+            # Ensure minimum forward progress to prevent getting stuck
+            min_groundspeed = 2.0  # m/s minimum (increased from 1.0)
+            if groundspeed < min_groundspeed:
+                logger.debug(f"Low groundspeed {groundspeed:.3f} even with boost, forcing minimum")
+                # Scale up ground velocity to minimum speed
+                if groundspeed > 0.01:
+                    ground_velocity = ground_velocity * (min_groundspeed / groundspeed)
+                else:
+                    # Fallback: move in desired direction at minimum speed
+                    ground_velocity = desired_direction * min_groundspeed
+                groundspeed = min_groundspeed
 
             # Compute drift
             if groundspeed > 0.1:
@@ -461,12 +544,18 @@ class WebSocketServer:
             else:
                 drift = Vector3(0, 0, 0)
 
-            # Compute effort (normalized by airspeed for proper scaling)
+            # Compute effort - accounts for headwind, correction, AND power boost
             headwind = max(0.0, -wind.dot(state.heading))
-            headwind_normalized = headwind / sim_params.max_airspeed
-            headwind_effort = headwind_normalized * 0.5  # Up to 0.5 for headwind
-            correction_effort = min(1.0, correction.magnitude()) * 0.3  # Up to 0.3 for correction
-            effort = min(1.0, 0.1 + headwind_effort + correction_effort)
+            headwind_normalized = headwind / base_airspeed
+            headwind_effort = headwind_normalized * 0.3  # Up to 0.3 for headwind
+
+            correction_effort = min(1.0, correction.magnitude()) * 0.2  # Up to 0.2 for correction
+
+            # Boost effort - using more power requires more effort
+            boost_ratio = (state.airspeed - base_airspeed) / (max_boost_airspeed - base_airspeed)
+            boost_effort = max(0.0, boost_ratio) * 0.4  # Up to 0.4 for full boost
+
+            effort = min(1.0, 0.1 + headwind_effort + correction_effort + boost_effort)
 
             # Create frame
             frame = FlightFrame(
@@ -496,15 +585,48 @@ class WebSocketServer:
             await asyncio.sleep(self.config.frame_delay)
 
             # Update position
-            state.position = state.position + ground_velocity * sim_params.timestep
+            old_position = Vector3(state.position.x, state.position.y, state.position.z)
+            position_delta = ground_velocity * sim_params.timestep
+            state.position = old_position + position_delta
+
+            # Safety check: ensure we actually made progress
+            movement = (state.position - old_position).magnitude()
+            if movement < 0.05:  # Increased threshold
+                # Drone is stuck or moving too slowly
+                logger.warning(
+                    f"STUCK! movement={movement:.6f}, pos={old_position.to_list()}, "
+                    f"target={target.to_list()}, "
+                    f"desired_dir={desired_direction.to_list()}, "
+                    f"heading={state.heading.to_list()}, "
+                    f"wind={wind.to_list()}, "
+                    f"ground_vel={ground_velocity.to_list()}, "
+                    f"delta={position_delta.to_list()}"
+                )
+                # Force movement toward the FINAL destination
+                final_target = path[-1]
+                to_final = (final_target - old_position).normalized()
+                if to_final.magnitude() < 0.1:
+                    # Fallback: toward end (typically lower x in our test case)
+                    to_final = Vector3(-1, 0, 0)
+                # Use larger minimum movement to overcome issues
+                forced_movement = 0.5  # meters per timestep
+                state.position = old_position + to_final * forced_movement
+                # Also update heading to match
+                state.heading = to_final
+                logger.warning(f"Forced new position: {state.position.to_list()}, heading: {state.heading.to_list()}")
+
             state.velocity = ground_velocity
 
             time += sim_params.timestep
             step += 1
 
-        # Return flight data for summary
-        from ..simulation.flight_simulator import FlightData
+        # Log if we exited due to max time (shouldn't normally happen)
+        if time >= sim_params.max_time:
+            logger.warning(f"Route {route_name} timed out after {time:.1f}s, reached waypoint {state.target_waypoint_index}/{len(path)}")
 
+        logger.info(f"Route {route_name} simulation finished: {len(frames)} frames, {step} steps")
+
+        # Return flight data for summary
         total_distance = sum(
             (frames[i+1].position - frames[i].position).magnitude()
             for i in range(len(frames) - 1)

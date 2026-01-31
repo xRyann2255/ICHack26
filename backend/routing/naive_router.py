@@ -6,11 +6,15 @@ Used as a comparison baseline to show the benefit of wind-aware routing.
 
 from __future__ import annotations
 import heapq
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
 
 from ..grid.node import Vector3, GridNode
 from ..grid.grid_3d import Grid3D
 from .dijkstra import PathResult, ExplorationFrame
+
+if TYPE_CHECKING:
+    from ..data.building_geometry import BuildingCollection
+    from ..data.stl_loader import STLMesh
 
 
 class NaiveRouter:
@@ -42,18 +46,25 @@ class NaiveRouter:
 
     def precompute_valid_edges(
         self,
-        buildings: Optional['BuildingCollection'] = None
+        buildings: Optional['BuildingCollection'] = None,
+        mesh: Optional['STLMesh'] = None
     ) -> None:
         """
         Pre-compute which edges are valid (no collisions).
 
         Args:
-            buildings: Buildings for collision checking
+            buildings: Buildings for collision checking (AABB-based)
+            mesh: STL mesh for collision checking (triangle-based, more accurate)
+
+        Note: If both are provided, mesh takes precedence.
         """
         from ..grid.collision import CollisionChecker
+        from ..data.stl_loader import MeshCollisionChecker
 
         collision_checker = None
-        if buildings:
+        if mesh:
+            collision_checker = MeshCollisionChecker(mesh)
+        elif buildings:
             collision_checker = CollisionChecker(buildings)
 
         self._valid_edges = set()

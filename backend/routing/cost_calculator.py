@@ -20,6 +20,7 @@ from ..grid.grid_3d import Grid3D
 if TYPE_CHECKING:
     from ..data.wind_field import WindField
     from ..data.building_geometry import BuildingCollection
+    from ..data.stl_loader import STLMesh, MeshCollisionChecker
 
 
 # =============================================================================
@@ -333,6 +334,7 @@ class CostCalculator:
         self,
         grid: Grid3D,
         buildings: Optional['BuildingCollection'] = None,
+        mesh: Optional['STLMesh'] = None,
         progress_callback: Optional[callable] = None
     ) -> Dict[Tuple[int, int], float]:
         """
@@ -340,16 +342,22 @@ class CostCalculator:
 
         Args:
             grid: 3D grid with nodes
-            buildings: Buildings for collision checking (optional)
+            buildings: Buildings for collision checking (AABB-based)
+            mesh: STL mesh for collision checking (triangle-based, more accurate)
             progress_callback: Called with (current, total) for progress
 
         Returns:
             Dictionary mapping (node_a_id, node_b_id) to cost
+
+        Note: If both buildings and mesh are provided, mesh takes precedence.
         """
         from ..grid.collision import CollisionChecker
+        from ..data.stl_loader import MeshCollisionChecker
 
         collision_checker = None
-        if buildings:
+        if mesh:
+            collision_checker = MeshCollisionChecker(mesh)
+        elif buildings:
             collision_checker = CollisionChecker(buildings)
 
         self._edge_costs = {}

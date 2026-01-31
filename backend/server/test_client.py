@@ -39,11 +39,13 @@ async def test_client():
         print(f"Bounds: {scene['data']['bounds']}")
 
         # Start simulation
+        # Coordinates are [x, y_altitude, z_depth] with Y-up system
+        # Bounds are (200, 80, 200) so altitude (y) must be 0-80
         print("\n=== Starting simulation ===")
         await websocket.send(json.dumps({
             "type": "start",
-            "start": [180, 100, 40],
-            "end": [20, 100, 40],
+            "start": [180, 40, 100],  # x=180, altitude=40, z=100
+            "end": [20, 40, 100],      # x=20, altitude=40, z=100
             "route_type": "both"
         }))
 

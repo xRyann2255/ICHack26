@@ -1372,10 +1372,10 @@ function WindArrows({ windData }: Props) {
 **Goal:** Display naive and optimized paths as colored lines.
 
 **Tasks:**
-- [ ] Create `FlightPath` component using drei's `<Line>`
-- [ ] Render naive path (red/orange)
-- [ ] Render optimized path (green/blue)
-- [ ] Add path visibility toggles
+- [x] Create `FlightPath` component using drei's `<Line>`
+- [x] Render naive path (red/orange)
+- [x] Render optimized path (green/blue)
+- [x] Add path visibility toggles
 - [ ] Optional: animate path drawing
 
 **Test:** See two different colored paths through the scene.
@@ -1405,12 +1405,12 @@ function FlightPath({ path, color }: { path: number[][], color: string }) {
 **Goal:** Animated drone that follows the path based on frame data.
 
 **Tasks:**
-- [ ] Create `Drone` component (simple geometry or load GLTF model)
-- [ ] Position drone from frame `position`
-- [ ] Rotate drone to match frame `heading`
-- [ ] Visualize `effort` (color, glow, particle trail)
-- [ ] Smooth interpolation between frames
-- [ ] Add propeller spin animation
+- [x] Create `Drone` component (simple geometry or load GLTF model)
+- [x] Position drone from frame `position`
+- [x] Rotate drone to match frame `heading`
+- [x] Visualize `effort` (color, glow, particle trail)
+- [x] Smooth interpolation between frames
+- [x] Add propeller spin animation
 
 **Test:** Drone moves along path, rotates to show crabbing.
 

@@ -14,13 +14,14 @@ import argparse
 import os
 import sys
 import time
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from .grid.node import Vector3
 from .grid.grid_3d import Grid3D
 from .data.mock_generator import MockDataGenerator
 from .data.wind_field import WindField
 from .data.building_geometry import BuildingCollection
+from .data.stl_loader import STLLoader, STLMesh
 from .routing.cost_calculator import CostCalculator, WeightConfig
 from .routing.dijkstra import DijkstraRouter
 from .routing.naive_router import NaiveRouter
@@ -118,21 +119,71 @@ def load_mock_data(input_dir: str) -> tuple:
     return buildings, wind_field
 
 
+def load_stl_scene(
+    stl_path: str,
+    config: DemoConfig,
+    save_dir: Optional[str] = None
+) -> tuple:
+    """
+    Load scene from STL file.
+
+    Args:
+        stl_path: Path to STL file
+        config: Demo configuration
+        save_dir: Optional directory to save generated wind field
+
+    Returns:
+        Tuple of (mesh, wind_field, bounds_min, bounds_max)
+    """
+    print_step(f"Loading STL scene from {stl_path}...")
+
+    gen = MockDataGenerator(seed=config.random_seed)
+    mesh, wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
+        stl_path,
+        wind_resolution=config.wind.field_resolution,
+        base_wind=config.wind.base_wind,
+        flight_ceiling=50.0,  # 50m above buildings
+        margin=50.0  # 50m around buildings
+    )
+
+    # Save wind field if requested
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        wind_path = os.path.join(save_dir, "wind_field.npz")
+        wind_field.save_npz(wind_path)
+        print(f"   Saved wind field to {wind_path}")
+
+    return mesh, wind_field, bounds_min, bounds_max
+
+
 def setup_routers(
     config: DemoConfig,
     buildings: BuildingCollection,
-    wind_field: WindField
+    wind_field: WindField,
+    mesh: Optional[STLMesh] = None,
+    bounds_min: Optional[Vector3] = None,
+    bounds_max: Optional[Vector3] = None
 ) -> tuple:
     """
     Set up the routing infrastructure.
+
+    Args:
+        config: Demo configuration
+        buildings: Building collection for collision (used if mesh is None)
+        wind_field: Wind field data
+        mesh: Optional STL mesh for collision (takes precedence over buildings)
+        bounds_min: Optional scene bounds (overrides config if provided)
+        bounds_max: Optional scene bounds (overrides config if provided)
 
     Returns:
         Tuple of (grid, wind_router, naive_router, smoother, metrics_calc)
     """
     print_step("Setting up routing infrastructure...")
 
-    bounds_min = Vector3(*config.scene.bounds_min)
-    bounds_max = Vector3(*config.scene.bounds_max)
+    if bounds_min is None:
+        bounds_min = Vector3(*config.scene.bounds_min)
+    if bounds_max is None:
+        bounds_max = Vector3(*config.scene.bounds_max)
 
     # Create grid
     print(f"   Creating grid (resolution={config.scene.grid_resolution}m)...")
@@ -154,7 +205,11 @@ def setup_routers(
     print("   Pre-computing wind-aware edge costs...")
     start_time = time.time()
     calc = CostCalculator(wind_field, weights)
-    calc.precompute_edge_costs(grid, buildings)
+    if mesh:
+        print("   Using STL mesh for collision detection...")
+        calc.precompute_edge_costs(grid, mesh=mesh)
+    else:
+        calc.precompute_edge_costs(grid, buildings=buildings)
     elapsed = time.time() - start_time
     print(f"   Computed {calc.edge_count} edges in {elapsed:.2f}s")
 
@@ -163,7 +218,10 @@ def setup_routers(
     # Setup naive router
     print("   Setting up naive router...")
     naive_router = NaiveRouter(grid, capture_interval=config.routing.capture_interval)
-    naive_router.precompute_valid_edges(buildings)
+    if mesh:
+        naive_router.precompute_valid_edges(mesh=mesh)
+    else:
+        naive_router.precompute_valid_edges(buildings=buildings)
 
     # Setup other components
     smoother = PathSmoother(points_per_segment=config.routing.path_smoothing_points)
@@ -237,14 +295,18 @@ def run_all_scenarios(
     config: DemoConfig,
     buildings: BuildingCollection,
     wind_field: WindField,
-    output_path: str
+    output_path: str,
+    mesh: Optional[STLMesh] = None,
+    bounds_min: Optional[Vector3] = None,
+    bounds_max: Optional[Vector3] = None
 ) -> None:
     """Run all scenarios and save output."""
     print_step("Running scenarios...")
 
     # Setup infrastructure
     grid, wind_router, naive_router, smoother, metrics_calc = setup_routers(
-        config, buildings, wind_field
+        config, buildings, wind_field,
+        mesh=mesh, bounds_min=bounds_min, bounds_max=bounds_max
     )
 
     serializer = RouteSerializer()
@@ -264,8 +326,11 @@ def run_all_scenarios(
     # Create output
     print_step("Creating output...")
 
-    bounds_min = Vector3(*config.scene.bounds_min)
-    bounds_max = Vector3(*config.scene.bounds_max)
+    # Use provided bounds or fall back to config
+    if bounds_min is None:
+        bounds_min = Vector3(*config.scene.bounds_min)
+    if bounds_max is None:
+        bounds_max = Vector3(*config.scene.bounds_max)
 
     demo_output = serializer.create_demo_output(
         bounds_min=bounds_min,
@@ -358,6 +423,13 @@ Presets: demo, small, large
         help="Weight preset for routing (default: speed_priority)"
     )
 
+    parser.add_argument(
+        "--stl",
+        type=str,
+        default=None,
+        help="Path to STL file for scene geometry (replaces mock buildings)"
+    )
+
     args = parser.parse_args()
 
     # Get configuration
@@ -371,15 +443,30 @@ Presets: demo, small, large
     print(f"Data directory: {args.data_dir}")
 
     # Validate arguments
-    if not args.generate_mock and not args.run:
-        print("\nError: Specify --generate-mock and/or --run")
+    if not args.generate_mock and not args.run and not args.stl:
+        print("\nError: Specify --generate-mock, --run, and/or --stl")
         parser.print_help()
         sys.exit(1)
 
     start_time = time.time()
 
-    # Generate mock data if requested
-    if args.generate_mock:
+    # Initialize data containers
+    buildings = None
+    wind_field = None
+    mesh = None
+    bounds_min = None
+    bounds_max = None
+
+    # Load STL scene if specified
+    if args.stl:
+        print_header("Loading STL Scene")
+        mesh, wind_field, bounds_min, bounds_max = load_stl_scene(
+            args.stl, config, save_dir=args.data_dir
+        )
+        # Create empty building collection (mesh handles collision)
+        buildings = BuildingCollection([])
+    # Generate mock data if requested (and no STL)
+    elif args.generate_mock:
         print_header("Generating Mock Data")
         buildings, wind_field = generate_mock_data(config)
         save_mock_data(buildings, wind_field, args.data_dir)
@@ -388,14 +475,14 @@ Presets: demo, small, large
     if args.run:
         print_header("Running Pathfinding")
 
-        # Load data if not just generated
-        if args.generate_mock:
-            # Already have the data
-            pass
-        else:
+        # Load data if not already loaded
+        if wind_field is None:
             buildings, wind_field = load_mock_data(args.data_dir)
 
-        run_all_scenarios(config, buildings, wind_field, args.output)
+        run_all_scenarios(
+            config, buildings, wind_field, args.output,
+            mesh=mesh, bounds_min=bounds_min, bounds_max=bounds_max
+        )
 
     # Done
     elapsed = time.time() - start_time
