@@ -1110,11 +1110,11 @@ Build incrementally - each step should be testable before moving to the next.
 **Goal:** Basic Vite + React + TypeScript project with Three.js rendering a test cube.
 
 **Tasks:**
-- [ ] Create Vite project: `npm create vite@latest frontend -- --template react-ts`
-- [ ] Install dependencies: `three`, `@react-three/fiber`, `@react-three/drei`
-- [ ] Create basic `<Canvas>` with a rotating cube
-- [ ] Add `OrbitControls` from drei
-- [ ] Verify hot reload works
+- [x] Create Vite project: `npm create vite@latest frontend -- --template react-ts`
+- [x] Install dependencies: `three`, `@react-three/fiber`, `@react-three/drei`
+- [x] Create basic `<Canvas>` with a rotating cube
+- [x] Add `OrbitControls` from drei
+- [x] Verify hot reload works
 
 **Test:** See a rotating cube you can orbit around.
 
@@ -1135,11 +1135,11 @@ frontend/
 **Goal:** Connect to backend, receive and store scene data.
 
 **Tasks:**
-- [ ] Create `useWebSocket` hook with connection management
-- [ ] Handle message types: `scene`, `wind_field`, `full_scene`
-- [ ] Create TypeScript interfaces for all data types
-- [ ] Store scene data in React state/context
-- [ ] Add connection status indicator
+- [x] Create `useWebSocket` hook with connection management
+- [x] Handle message types: `scene`, `wind_field`, `full_scene`
+- [x] Create TypeScript interfaces for all data types
+- [x] Store scene data in React state/context
+- [x] Add connection status indicator
 
 **Test:** Console logs show scene data received from backend.
 
@@ -1186,11 +1186,11 @@ interface FrameData {
 **Goal:** Render the scene bounds and buildings as 3D boxes.
 
 **Tasks:**
-- [ ] Create `Buildings` component that renders boxes from scene data
-- [ ] Set up camera to view entire scene (position based on bounds)
-- [ ] Add ground plane
-- [ ] Add ambient + directional lighting
-- [ ] Style buildings (color, opacity, edges)
+- [ ] Create `Buildings` component that renders boxes from scene data (SKIPPED - using STL terrain instead)
+- [x] Set up camera to view entire scene (position based on bounds)
+- [x] Add ground plane (Grid component)
+- [x] Add ambient + directional lighting
+- [ ] Style buildings (color, opacity, edges) (SKIPPED - using STL terrain instead)
 
 **Test:** See buildings rendered as 3D boxes matching backend data.
 
@@ -1228,13 +1228,13 @@ function Buildings({ buildings }: { buildings: Building[] }) {
 **STL File:** `southken.stl` (South Kensington area)
 
 **Tasks:**
-- [ ] Copy `southken.stl` to `frontend/ichack26/public/models/`
-- [ ] Install drei (already done) - has `useLoader` support
-- [ ] Create `Terrain.tsx` component using STLLoader
-- [ ] Center and scale the mesh appropriately
-- [ ] Apply material (building color, optional edges)
-- [ ] Compute bounding box for camera positioning
-- [ ] Add loading state/suspense fallback
+- [x] Copy `southken.stl` to `frontend/ichack26/public/models/`
+- [x] Install drei (already done) - has `useLoader` support
+- [x] Create `Terrain.tsx` component using STLLoader
+- [x] Center and scale the mesh appropriately
+- [x] Apply material (building color, optional edges)
+- [x] Compute bounding box for camera positioning
+- [x] Add loading state/suspense fallback
 
 **Test:** See the South Kensington buildings/terrain rendered in 3D.
 
@@ -1499,9 +1499,9 @@ function Drone({ frame }: { frame: FrameData | null }) {
 **Goal:** Manage simulation lifecycle (idle → loading → paths → simulating → complete).
 
 **Tasks:**
-- [ ] Create simulation state machine / reducer
-- [ ] Handle all WebSocket message types
-- [ ] Store frames for both routes
+- [x] Create simulation state machine / reducer (integrated in useWebSocket hook)
+- [x] Handle all WebSocket message types
+- [x] Store frames for both routes
 - [ ] Track current playback time
 - [ ] Support play/pause/restart
 
@@ -1584,7 +1584,7 @@ function SplitView() {
 - [ ] "Start Simulation" button
 - [ ] Playback controls (play/pause/speed)
 - [ ] Toggles for wind field visibility, path visibility
-- [ ] Connection status indicator
+- [x] Connection status indicator (ConnectionStatus.tsx)
 
 **Test:** Can click button to start simulation with chosen endpoints.
 
@@ -1651,11 +1651,11 @@ function MetricsPanel({ naive, optimized }: MetricsProps) {
 **Goal:** Visual polish for demo impact.
 
 **Tasks:**
-- [ ] Add skybox or gradient background
+- [x] Add skybox or gradient background (background color + fog added in App.tsx)
 - [ ] Post-processing effects (bloom for effort glow)
 - [ ] Drone trail/particle effects
 - [ ] Smooth camera transitions
-- [ ] Loading states and animations
+- [x] Loading states and animations (Suspense fallback in Scene.tsx)
 - [ ] Responsive layout
 - [ ] Sound effects (optional)
 
