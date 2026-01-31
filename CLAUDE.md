@@ -496,11 +496,11 @@ Follow this sequence for the routing algorithm:
 6. [x] **Step 6: Cost calculator** - Edge cost computation with wind awareness
 7. [x] **Step 7: Dijkstra router** - Pathfinding with exploration history
 8. [x] **Step 8: Naive router** - A* comparison baseline
-9. [ ] **Step 9: Path smoother** - Spline interpolation
-10. [ ] **Step 10: Metrics calculator** - All 5 metrics from spec
-11. [ ] **Step 11: Serializer** - JSON output for frontend
-12. [ ] **Step 12: Main entry point** - CLI integration
-13. [ ] **Step 13: Drone flight simulator** - Simulate actual flight with wind drift/corrections
+9. [x] **Step 9: Path smoother** - Spline interpolation
+10. [x] **Step 10: Metrics calculator** - All 5 metrics from spec
+11. [x] **Step 11: Serializer** - JSON output for frontend
+12. [x] **Step 12: Main entry point** - CLI integration
+13. [x] **Step 13: Drone flight simulator** - Simulate actual flight with wind drift/corrections
 
 ### Verification at Each Step
 

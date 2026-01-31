@@ -9,6 +9,4 @@ from .cost_calculator import (
 )
 from .dijkstra import DijkstraRouter, PathResult, ExplorationFrame
 from .naive_router import NaiveRouter
-
-# Will be imported when implemented:
-# from .path_smoother import PathSmoother
+from .path_smoother import PathSmoother, compute_path_length, path_to_list
