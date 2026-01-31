@@ -374,33 +374,55 @@ class WebSocketServer:
             "data": paths_data
         })
 
-        # Run simulations and stream frames
+        # Run simulations in parallel (both drones fly at the same time)
         all_metrics = {}
 
+        # Send simulation_start for all routes
         for route_name, path in routes_to_run:
-            logger.info(f"Simulating {route_name} route...")
-
             await self.send_json(websocket, {
                 "type": "simulation_start",
                 "route": route_name,
                 "waypoint_count": len(path)
             })
 
-            # Run simulation and stream frames
-            flight_data = await self.stream_simulation(websocket, route_name, path)
+        # Run parallel simulation
+        if len(routes_to_run) == 2:
+            # Both routes - run them simultaneously
+            logger.info("Running both simulations in parallel...")
+            flight_results = await self.stream_parallel_simulation(
+                websocket,
+                routes_to_run[0],  # (name, path)
+                routes_to_run[1]   # (name, path)
+            )
 
-            # Calculate metrics
-            metrics = self.metrics_calc.calculate(path)
-            all_metrics[route_name] = metrics.to_dict()
+            for route_name, flight_data in flight_results.items():
+                path = next(p for n, p in routes_to_run if n == route_name)
+                metrics = self.metrics_calc.calculate(path)
+                all_metrics[route_name] = metrics.to_dict()
 
-            logger.info(f"Sending simulation_end for {route_name}")
-            await self.send_json(websocket, {
-                "type": "simulation_end",
-                "route": route_name,
-                "flight_summary": flight_data.to_dict()["summary"],
-                "metrics": metrics.to_dict()
-            })
-            logger.info(f"Route {route_name} done, completed={flight_data.completed}")
+                await self.send_json(websocket, {
+                    "type": "simulation_end",
+                    "route": route_name,
+                    "flight_summary": flight_data.to_dict()["summary"],
+                    "metrics": metrics.to_dict()
+                })
+                logger.info(f"Route {route_name} done, completed={flight_data.completed}")
+        else:
+            # Single route - run normally
+            for route_name, path in routes_to_run:
+                logger.info(f"Simulating {route_name} route...")
+                flight_data = await self.stream_simulation(websocket, route_name, path)
+
+                metrics = self.metrics_calc.calculate(path)
+                all_metrics[route_name] = metrics.to_dict()
+
+                await self.send_json(websocket, {
+                    "type": "simulation_end",
+                    "route": route_name,
+                    "flight_summary": flight_data.to_dict()["summary"],
+                    "metrics": metrics.to_dict()
+                })
+                logger.info(f"Route {route_name} done, completed={flight_data.completed}")
 
         # Send completion with comparison
         await self.send_json(websocket, {
@@ -409,6 +431,232 @@ class WebSocketServer:
         })
 
         logger.info("Simulation complete")
+
+    async def stream_parallel_simulation(
+        self,
+        websocket: WebSocketServerProtocol,
+        route1: tuple,  # (name, path)
+        route2: tuple   # (name, path)
+    ) -> Dict[str, Any]:
+        """
+        Stream both simulations in parallel, sending frames for both drones simultaneously.
+
+        Returns dict mapping route_name to FlightData.
+        """
+        from ..simulation.flight_simulator import DroneState, FlightFrame, FlightData
+
+        name1, path1 = route1
+        name2, path2 = route2
+
+        logger.info(f"Running parallel simulation: {name1} ({len(path1)} pts) and {name2} ({len(path2)} pts)")
+
+        sim_params = SimulationParams(
+            max_airspeed=self.config.drone_airspeed,
+            timestep=self.config.simulation_timestep,
+            waypoint_threshold=5.0
+        )
+        sim_params.max_turn_rate = 360.0
+
+        # Initialize both drone states
+        states = {}
+        frames = {}
+        completed = {}
+
+        for name, path in [(name1, path1), (name2, path2)]:
+            if len(path) < 2:
+                completed[name] = True
+                frames[name] = []
+                continue
+
+            states[name] = {
+                'state': DroneState(
+                    position=Vector3(path[0].x, path[0].y, path[0].z),
+                    velocity=Vector3(0, 0, 0),
+                    heading=self._direction_to(path[0], path[1]),
+                    airspeed=self.config.drone_airspeed,
+                    target_waypoint_index=1
+                ),
+                'path': path
+            }
+            completed[name] = False
+            frames[name] = []
+
+        time = 0.0
+        step = 0
+        base_airspeed = self.config.drone_airspeed
+        max_boost_airspeed = 200.0
+        min_desired_groundspeed = 15.0
+
+        # Run until both complete or timeout
+        while time < sim_params.max_time:
+            all_done = all(completed.values())
+            if all_done:
+                break
+
+            # Process each drone
+            for name in [name1, name2]:
+                if completed[name]:
+                    continue
+
+                data = states[name]
+                state = data['state']
+                path = data['path']
+
+                if state.target_waypoint_index >= len(path):
+                    completed[name] = True
+                    continue
+
+                target = path[state.target_waypoint_index]
+                wind = self.wind_field.get_wind_at(state.position)
+
+                to_target = target - state.position
+                distance_to_target = to_target.magnitude()
+
+                # Advance through reached waypoints
+                while distance_to_target < sim_params.waypoint_threshold:
+                    state.target_waypoint_index += 1
+                    if state.target_waypoint_index >= len(path):
+                        break
+                    target = path[state.target_waypoint_index]
+                    to_target = target - state.position
+                    distance_to_target = to_target.magnitude()
+
+                if state.target_waypoint_index >= len(path):
+                    completed[name] = True
+                    continue
+
+                # Get direction to target
+                desired_direction = to_target.normalized()
+                if desired_direction.magnitude() < 0.1:
+                    desired_direction = state.heading
+                if desired_direction.magnitude() < 0.1:
+                    desired_direction = Vector3(-1, 0, 0)
+
+                # Calculate headwind and adjust airspeed
+                headwind_component = -wind.dot(desired_direction)
+                required_airspeed = headwind_component + min_desired_groundspeed
+                state.airspeed = max(base_airspeed, min(max_boost_airspeed, required_airspeed))
+
+                # Compute corrected heading
+                heading, correction = self._compute_corrected_heading(
+                    desired_direction, wind, state.airspeed
+                )
+
+                # Update heading
+                state.heading = self._turn_toward(
+                    state.heading, heading,
+                    sim_params.max_turn_rate * sim_params.timestep
+                )
+                if state.heading.magnitude() < 0.1:
+                    state.heading = desired_direction
+
+                # Compute velocities
+                air_velocity = state.heading * state.airspeed
+                ground_velocity = air_velocity + wind
+                groundspeed = ground_velocity.magnitude()
+
+                min_groundspeed = 10.0
+                if groundspeed < min_groundspeed:
+                    ground_velocity = desired_direction * min_groundspeed
+                    groundspeed = min_groundspeed
+
+                # Compute drift and effort
+                if groundspeed > 0.1:
+                    drift = wind - (wind.dot(desired_direction) * desired_direction)
+                else:
+                    drift = Vector3(0, 0, 0)
+
+                headwind = max(0.0, -wind.dot(state.heading))
+                headwind_effort = (headwind / base_airspeed) * 0.3
+                correction_effort = min(1.0, correction.magnitude()) * 0.2
+                boost_ratio = (state.airspeed - base_airspeed) / (max_boost_airspeed - base_airspeed)
+                boost_effort = max(0.0, boost_ratio) * 0.4
+                effort = min(1.0, 0.1 + headwind_effort + correction_effort + boost_effort)
+
+                # Create frame
+                frame = FlightFrame(
+                    time=time,
+                    position=Vector3(state.position.x, state.position.y, state.position.z),
+                    velocity=ground_velocity,
+                    heading=Vector3(state.heading.x, state.heading.y, state.heading.z),
+                    wind=wind,
+                    drift=drift,
+                    correction=correction,
+                    effort=effort,
+                    airspeed=state.airspeed,
+                    groundspeed=groundspeed,
+                    waypoint_index=state.target_waypoint_index,
+                    distance_to_waypoint=distance_to_target
+                )
+                frames[name].append(frame)
+
+                # Send frame to client
+                await self.send_json(websocket, {
+                    "type": "frame",
+                    "route": name,
+                    "data": frame.to_dict()
+                })
+
+                # Update position
+                old_position = Vector3(state.position.x, state.position.y, state.position.z)
+                position_delta = ground_velocity * sim_params.timestep
+                state.position = old_position + position_delta
+
+                # Safety checks
+                import math
+                if (math.isnan(state.position.x) or math.isnan(state.position.y) or math.isnan(state.position.z)):
+                    state.position = old_position
+
+                movement = (state.position - old_position).magnitude()
+                if movement < 0.05:
+                    final_target = path[-1]
+                    to_final = (final_target - old_position).normalized()
+                    if to_final.magnitude() < 0.1:
+                        to_final = Vector3(-1, 0, 0)
+                    state.position = old_position + to_final * 0.5
+                    state.heading = to_final
+
+                state.velocity = ground_velocity
+
+            # Delay for real-time effect (only once per time step)
+            await asyncio.sleep(self.config.frame_delay)
+
+            time += sim_params.timestep
+            step += 1
+
+        # Build flight data results
+        results = {}
+        for name in [name1, name2]:
+            route_frames = frames[name]
+            if route_frames:
+                total_distance = sum(
+                    (route_frames[i+1].position - route_frames[i].position).magnitude()
+                    for i in range(len(route_frames) - 1)
+                )
+                results[name] = FlightData(
+                    frames=route_frames,
+                    total_time=time,
+                    total_distance=total_distance,
+                    average_groundspeed=total_distance / max(0.1, time),
+                    average_effort=sum(f.effort for f in route_frames) / max(1, len(route_frames)),
+                    max_effort=max((f.effort for f in route_frames), default=0),
+                    completed=completed[name],
+                    waypoints_reached=states[name]['state'].target_waypoint_index if name in states else 0
+                )
+            else:
+                results[name] = FlightData(
+                    frames=[],
+                    total_time=0,
+                    total_distance=0,
+                    average_groundspeed=0,
+                    average_effort=0,
+                    max_effort=0,
+                    completed=True,
+                    waypoints_reached=0
+                )
+
+        logger.info(f"Parallel simulation complete: {step} steps, {time:.1f}s")
+        return results
 
     async def stream_simulation(
         self,

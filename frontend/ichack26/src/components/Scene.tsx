@@ -65,6 +65,18 @@ function CameraController() {
 export default function Scene() {
   const { windFieldData, paths, currentFrame, simulation } = useScene()
 
+  // Debug: log when paths change
+  if (paths) {
+    console.log('[Scene] Paths received:', {
+      naive: paths.naive?.length,
+      optimized: paths.optimized?.length,
+      naiveFirst: paths.naive?.[0],
+      naiveLast: paths.naive?.[paths.naive?.length - 1],
+      optimizedFirst: paths.optimized?.[0],
+      optimizedLast: paths.optimized?.[paths.optimized?.length - 1],
+    })
+  }
+
   return (
     <>
       <Lighting />

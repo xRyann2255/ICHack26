@@ -95,6 +95,16 @@ export default function ConnectionStatus() {
     };
   }, [sceneBounds]);
 
+  // Auto-start simulation when data is loaded
+  const [autoStarted, setAutoStarted] = useState(false);
+  useEffect(() => {
+    if (isDataLoaded && sceneBounds && !autoStarted && simulation.status === 'idle') {
+      console.log('[ConnectionStatus] Auto-starting simulation with:', { simStart, simEnd });
+      setAutoStarted(true);
+      startSimulation(simStart, simEnd, 'both');
+    }
+  }, [isDataLoaded, sceneBounds, autoStarted, simulation.status, simStart, simEnd, startSimulation]);
+
   const statusColor = STATUS_COLORS[connectionStatus];
   const statusLabel = STATUS_LABELS[connectionStatus];
 
