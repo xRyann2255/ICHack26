@@ -376,8 +376,8 @@ Follow this sequence for the routing algorithm:
 1. [x] **Step 1: Core data structures** - `Vector3`, `GridNode` classes
 2. [x] **Step 2: Grid creation** - `Grid3D` with node generation and neighbor lookup
 3. [x] **Step 3: Building geometry** - `Building` class with collision detection
-4. [ ] **Step 4: Mock data generator** - Generate test wind/building data
-5. [ ] **Step 5: Wind field** - `WindField` class with interpolation
+4. [x] **Step 4: Mock data generator** - Generate test wind/building data
+5. [x] **Step 5: Wind field** - `WindField` class with interpolation
 6. [ ] **Step 6: Cost calculator** - Edge cost computation with wind awareness
 7. [ ] **Step 7: Dijkstra router** - Pathfinding with exploration history
 8. [ ] **Step 8: Naive router** - A* comparison baseline
