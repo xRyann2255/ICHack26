@@ -26,7 +26,9 @@ The backend is fully implemented. Key components:
 - **Drone Simulator**: Physics-based flight simulation with wind drift/corrections
 - **WebSocket Server**: Real-time streaming of drone positions to frontend
 
-**Start server:** `python -m backend.server.websocket_server --port 8765 --frame-delay 0.05`
+**Start server:** `python -m backend.server.websocket_server --port 8765 --frame-delay 0.05 --vtu internal.vtu`
+
+**Note:** The `--vtu` flag loads real CFD wind data from `internal.vtu`. Without it, mock wind data is generated.
 
 **Weight configs:** Speed (`w1=0.3, w2=0.6, w3=0.1`), Safety (`w1=0.2, w2=0.2, w3=0.6`), Balanced (`w1=0.33, w2=0.33, w3=0.34`)
 
@@ -39,10 +41,18 @@ This section documents the data formats the frontend receives from the backend W
 ### Starting the Server
 
 ```bash
-python -m backend.server.websocket_server --port 8765 --frame-delay 0.05
+python -m backend.server.websocket_server --port 8765 --frame-delay 0.05 --vtu internal.vtu
 ```
 
 Connect to: `ws://localhost:8765`
+
+**Server options:**
+- `--port`: WebSocket port (default: 8765)
+- `--frame-delay`: Delay between simulation frames in seconds (default: 0.05)
+- `--vtu`: Path to VTU file with CFD wind data (default: internal.vtu)
+- `--stl`: Path to STL file for terrain geometry (default: southken.stl)
+- `--wind-resolution`: Wind field grid resolution in meters (default: 10)
+- `--grid-resolution`: Pathfinding grid resolution in meters (default: 20)
 
 ---
 
