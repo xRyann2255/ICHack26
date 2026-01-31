@@ -24,13 +24,25 @@ from .building_geometry import Building, BuildingCollection
 
 
 def stl_to_backend_coords(x: float, y: float, z: float) -> Tuple[float, float, float]:
-    """Convert STL coordinates (Z-up) to backend coordinates (Y-up)."""
-    return (x, z, y)
+    """
+    Convert STL coordinates (Z-up) to backend coordinates (Y-up).
+
+    This must match the frontend's Three.js transformation:
+    - STL X → Backend X (unchanged)
+    - STL Z → Backend Y (height/altitude)
+    - STL Y → Backend -Z (depth, negated to match Three.js rotation)
+
+    The frontend applies rotation=[-PI/2, 0, 0] which transforms:
+    (x, y, z) → (x, z, -y)
+
+    So we do the same here to ensure paths align with rendered terrain.
+    """
+    return (x, z, -y)
 
 
 def backend_to_stl_coords(x: float, y: float, z: float) -> Tuple[float, float, float]:
     """Convert backend coordinates (Y-up) to STL coordinates (Z-up)."""
-    return (x, z, y)
+    return (x, -z, y)
 
 
 @dataclass
