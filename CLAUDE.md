@@ -1177,12 +1177,12 @@ function MetricsPanel({ naive, optimized }: MetricsProps) {
 
 **Tasks:**
 - [x] Add skybox or gradient background (background color + fog added in App.tsx)
-- [ ] Post-processing effects (bloom for effort glow)
-- [ ] Drone trail/particle effects
-- [ ] Smooth camera transitions
+- [x] Post-processing effects (bloom for effort glow)
+- [x] Drone trail/particle effects
+- [x] Smooth camera transitions
 - [x] Loading states and animations (Suspense fallback in Scene.tsx)
-- [ ] Responsive layout
-- [ ] Sound effects (optional)
+- [x] Responsive layout
+- [ ] Sound effects (optional - skipped for hackathon)
 
 **Files:**
 ```

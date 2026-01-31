@@ -18,6 +18,7 @@ export interface VisibilityState {
   optimizedDrone: boolean;
   terrain: boolean;
   waypoints: boolean;
+  effects: boolean;
 }
 
 interface VisibilityTogglesProps {
@@ -33,7 +34,7 @@ interface ToggleConfig {
   key: keyof VisibilityState;
   label: string;
   color: string;
-  group: 'elements' | 'routes' | 'drones';
+  group: 'elements' | 'routes' | 'drones' | 'effects';
 }
 
 const TOGGLES: ToggleConfig[] = [
@@ -44,6 +45,7 @@ const TOGGLES: ToggleConfig[] = [
   { key: 'optimizedPath', label: 'Optimized Path', color: '#4ecdc4', group: 'routes' },
   { key: 'naiveDrone', label: 'Naive Drone', color: '#ff6b6b', group: 'drones' },
   { key: 'optimizedDrone', label: 'Optimized Drone', color: '#4ecdc4', group: 'drones' },
+  { key: 'effects', label: 'Post-Processing', color: '#bf7fff', group: 'effects' },
 ];
 
 // ============================================================================
@@ -64,7 +66,7 @@ export default function VisibilityToggles({
 
   // Toggle all in a group
   const handleGroupToggle = useCallback(
-    (group: 'elements' | 'routes' | 'drones', enabled: boolean) => {
+    (group: 'elements' | 'routes' | 'drones' | 'effects', enabled: boolean) => {
       const groupKeys = TOGGLES.filter((t) => t.group === group).map((t) => t.key);
       const updates: Partial<VisibilityState> = {};
       groupKeys.forEach((key) => {
@@ -76,27 +78,32 @@ export default function VisibilityToggles({
   );
 
   // Check if all items in a group are visible
-  const isGroupAllVisible = (group: 'elements' | 'routes' | 'drones') => {
+  const isGroupAllVisible = (group: 'elements' | 'routes' | 'drones' | 'effects') => {
     const groupToggles = TOGGLES.filter((t) => t.group === group);
     return groupToggles.every((t) => visibility[t.key]);
   };
 
   // Render toggles for a group
-  const renderGroup = (group: 'elements' | 'routes' | 'drones', title: string) => {
+  const renderGroup = (group: 'elements' | 'routes' | 'drones' | 'effects', title: string) => {
     const groupToggles = TOGGLES.filter((t) => t.group === group);
     const allVisible = isGroupAllVisible(group);
+
+    // For single-item groups, don't show the "Show All" button
+    const showGroupToggle = groupToggles.length > 1;
 
     return (
       <div style={styles.group} key={group}>
         <div style={styles.groupHeader}>
           <span style={styles.groupTitle}>{title}</span>
-          <button
-            style={styles.groupToggle}
-            onClick={() => handleGroupToggle(group, !allVisible)}
-            title={allVisible ? 'Hide all' : 'Show all'}
-          >
-            {allVisible ? 'Hide All' : 'Show All'}
-          </button>
+          {showGroupToggle && (
+            <button
+              style={styles.groupToggle}
+              onClick={() => handleGroupToggle(group, !allVisible)}
+              title={allVisible ? 'Hide all' : 'Show all'}
+            >
+              {allVisible ? 'Hide All' : 'Show All'}
+            </button>
+          )}
         </div>
         <div style={styles.toggleList}>
           {groupToggles.map((toggle) => (
@@ -122,6 +129,7 @@ export default function VisibilityToggles({
         {renderGroup('elements', 'Scene Elements')}
         {renderGroup('routes', 'Flight Paths')}
         {renderGroup('drones', 'Drones')}
+        {renderGroup('effects', 'Visual Effects')}
       </div>
     </div>
   );
@@ -186,6 +194,7 @@ export const DEFAULT_VISIBILITY: VisibilityState = {
   optimizedDrone: true,
   terrain: true,
   waypoints: false,
+  effects: true,
 };
 
 // ============================================================================

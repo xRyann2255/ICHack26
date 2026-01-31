@@ -1,3 +1,7 @@
+/* ============================================================================
+   Base Styles
+   ============================================================================ */
+
 * {
   margin: 0;
   padding: 0;
@@ -8,4 +12,269 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a2e;
+  color: #ffffff;
+}
+
+/* ============================================================================
+   Responsive Layout
+   ============================================================================ */
+
+/* Mobile devices (portrait) */
+@media screen and (max-width: 480px) {
+  /* Control Panel - full width at bottom */
+  .control-panel {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    max-width: none !important;
+    min-width: auto !important;
+  }
+
+  /* Metrics Panel - full width */
+  .metrics-panel {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    max-width: none !important;
+    min-width: auto !important;
+    font-size: 11px !important;
+  }
+
+  /* View toggles - smaller */
+  .view-toggles {
+    padding: 2px !important;
+    gap: 2px !important;
+  }
+
+  .view-toggles button {
+    padding: 6px 10px !important;
+    font-size: 10px !important;
+  }
+
+  /* Visibility toggles - hide on mobile */
+  .visibility-toggles {
+    display: none !important;
+  }
+
+  /* Playback controls - simplified */
+  .playback-controls {
+    min-width: auto !important;
+    padding: 12px !important;
+  }
+
+  /* Connection status - minimal */
+  .connection-status {
+    min-width: auto !important;
+    max-width: 200px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* Tablets and small laptops */
+@media screen and (max-width: 768px) {
+  /* Adjust panel positions to avoid overlap */
+  .control-panel {
+    max-width: 260px !important;
+  }
+
+  .metrics-panel {
+    max-width: 320px !important;
+  }
+
+  /* Stack visibility toggles */
+  .visibility-toggles {
+    top: 60px !important;
+    right: 8px !important;
+    max-width: 180px !important;
+  }
+
+  /* Smaller view toggle buttons */
+  .view-toggles button {
+    padding: 6px 12px !important;
+    font-size: 11px !important;
+  }
+}
+
+/* Medium screens */
+@media screen and (max-width: 1024px) {
+  .control-panel {
+    max-width: 280px !important;
+  }
+
+  .playback-controls {
+    min-width: 280px !important;
+  }
+}
+
+/* Large screens - default layout works well */
+@media screen and (min-width: 1440px) {
+  .metrics-panel {
+    max-width: 450px !important;
+  }
+
+  .control-panel {
+    max-width: 340px !important;
+  }
+}
+
+/* ============================================================================
+   Split View Responsive
+   ============================================================================ */
+
+/* Split view on small screens - stack vertically */
+@media screen and (max-width: 768px) {
+  .split-view-container {
+    flex-direction: column !important;
+  }
+
+  .split-view-divider {
+    width: 100% !important;
+    height: 3px !important;
+  }
+
+  .split-view-panel {
+    height: 50% !important;
+  }
+}
+
+/* ============================================================================
+   Animation Classes
+   ============================================================================ */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 0.3s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.4s ease-out forwards;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ============================================================================
+   Utility Classes
+   ============================================================================ */
+
+.hidden {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ============================================================================
+   Focus Styles (Accessibility)
+   ============================================================================ */
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #4a9eff;
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   Print Styles
+   ============================================================================ */
+
+@media print {
+  .control-panel,
+  .playback-controls,
+  .visibility-toggles,
+  .view-toggles,
+  .connection-status {
+    display: none !important;
+  }
 }
