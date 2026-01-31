@@ -1221,6 +1221,142 @@ function Buildings({ buildings }: { buildings: Building[] }) {
 
 ---
 
+#### Step 3B: STL Terrain Loading (South Kensington)
+
+**Goal:** Load and render the `southken.stl` file as the terrain/building geometry for the demo area.
+
+**STL File:** `southken.stl` (South Kensington area)
+
+**Tasks:**
+- [ ] Copy `southken.stl` to `frontend/ichack26/public/models/`
+- [ ] Install drei (already done) - has `useLoader` support
+- [ ] Create `Terrain.tsx` component using STLLoader
+- [ ] Center and scale the mesh appropriately
+- [ ] Apply material (building color, optional edges)
+- [ ] Compute bounding box for camera positioning
+- [ ] Add loading state/suspense fallback
+
+**Test:** See the South Kensington buildings/terrain rendered in 3D.
+
+**Files:**
+```
+public/
+└── models/
+    └── southken.stl          # STL terrain file
+
+src/components/
+└── Terrain.tsx               # STL loading component
+```
+
+**Code Pattern:**
+```tsx
+import { useLoader } from '@react-three/fiber'
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
+import * as THREE from 'three'
+import { useMemo } from 'react'
+
+function Terrain() {
+  // Load the STL geometry
+  const geometry = useLoader(STLLoader, '/models/southken.stl')
+
+  // Center the geometry and compute bounds
+  const { centeredGeometry, bounds } = useMemo(() => {
+    const geo = geometry.clone()
+    geo.computeBoundingBox()
+    const box = geo.boundingBox!
+    const center = new THREE.Vector3()
+    box.getCenter(center)
+
+    // Center the geometry at origin
+    geo.translate(-center.x, -center.y, -box.min.z) // Keep Z at ground level
+
+    return {
+      centeredGeometry: geo,
+      bounds: {
+        min: [box.min.x - center.x, box.min.y - center.y, 0],
+        max: [box.max.x - center.x, box.max.y - center.y, box.max.z - box.min.z]
+      }
+    }
+  }, [geometry])
+
+  return (
+    <mesh geometry={centeredGeometry} castShadow receiveShadow>
+      <meshStandardMaterial
+        color="#667788"
+        flatShading
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  )
+}
+
+// Wrap with Suspense in parent component
+export default Terrain
+```
+
+**Usage in Scene:**
+```tsx
+import { Suspense } from 'react'
+import Terrain from './Terrain'
+
+function Scene() {
+  return (
+    <>
+      <Suspense fallback={<LoadingBox />}>
+        <Terrain />
+      </Suspense>
+      {/* ... other components */}
+    </>
+  )
+}
+
+function LoadingBox() {
+  return (
+    <mesh>
+      <boxGeometry args={[10, 10, 10]} />
+      <meshBasicMaterial color="gray" wireframe />
+    </mesh>
+  )
+}
+```
+
+**Coordinate System Notes:**
+- STL files may use different units (mm vs m) - may need scaling
+- STL may have different up-axis (Z-up vs Y-up) - may need rotation
+- Compute bounding box to determine scene bounds for wind field alignment
+
+**Scaling if needed:**
+```tsx
+// If STL is in millimeters, scale to meters
+<mesh scale={[0.001, 0.001, 0.001]} geometry={centeredGeometry}>
+```
+
+**Rotation if STL uses different up-axis:**
+```tsx
+// If STL has Y-up but scene needs Z-up
+<mesh rotation={[-Math.PI / 2, 0, 0]} geometry={centeredGeometry}>
+```
+
+**TypeScript Types:**
+```typescript
+// Add to vite-env.d.ts if STLLoader types aren't recognized
+declare module 'three/examples/jsm/loaders/STLLoader' {
+  import { BufferGeometry, Loader, LoadingManager } from 'three'
+  export class STLLoader extends Loader {
+    constructor(manager?: LoadingManager)
+    load(
+      url: string,
+      onLoad: (geometry: BufferGeometry) => void,
+      onProgress?: (event: ProgressEvent) => void,
+      onError?: (event: ErrorEvent) => void
+    ): void
+    parse(data: ArrayBuffer | string): BufferGeometry
+  }
+}
+```
+
+---
+
 #### Step 4: Wind Field Visualization
 
 **Goal:** Render wind vectors as arrows or lines showing wind direction/strength.

@@ -1,22 +1,12 @@
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { Suspense } from 'react'
 import { OrbitControls, Grid } from '@react-three/drei'
-import * as THREE from 'three'
+import Terrain from './Terrain'
 
-function RotatingCube() {
-  const meshRef = useRef<THREE.Mesh>(null)
-
-  useFrame((_, delta) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.x += delta * 0.5
-      meshRef.current.rotation.y += delta * 0.7
-    }
-  })
-
+function LoadingBox() {
   return (
-    <mesh ref={meshRef} position={[0, 1, 0]}>
-      <boxGeometry args={[2, 2, 2]} />
-      <meshStandardMaterial color="#4a9eff" />
+    <mesh>
+      <boxGeometry args={[20, 20, 20]} />
+      <meshBasicMaterial color="#4a9eff" wireframe />
     </mesh>
   )
 }
@@ -39,7 +29,9 @@ export default function Scene() {
   return (
     <>
       <Lighting />
-      <RotatingCube />
+      <Suspense fallback={<LoadingBox />}>
+        <Terrain />
+      </Suspense>
 
       {/* Ground grid for reference */}
       <Grid
@@ -58,8 +50,8 @@ export default function Scene() {
       {/* Camera controls */}
       <OrbitControls
         makeDefault
-        minDistance={5}
-        maxDistance={500}
+        minDistance={10}
+        maxDistance={2000}
         minPolarAngle={0}
         maxPolarAngle={Math.PI / 2.1}
       />

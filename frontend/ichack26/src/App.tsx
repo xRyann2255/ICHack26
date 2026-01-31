@@ -7,10 +7,10 @@ function App() {
     <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }}>
       <Canvas
         camera={{
-          position: [50, 50, 50],
+          position: [200, 200, 150],
           fov: 60,
           near: 0.1,
-          far: 2000,
+          far: 10000,
         }}
         shadows
       >
