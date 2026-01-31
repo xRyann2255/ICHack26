@@ -298,7 +298,8 @@ def prepare_demo_data():
 
 ### Data Format
 
-To be agreed upon with teammates. Suggested: NumPy `.npz` for wind data, JSON or OBJ for geometry.
+To be agreed upon with teammates. Suggested: NumPy `.
+` for wind data, JSON or OBJ for geometry.
 
 ---
 
@@ -354,3 +355,40 @@ A compelling demo that clearly shows:
 2. Visual difference between naive and optimized routes
 3. Quantitative metrics proving the optimized route is superior
 4. The "wow factor" of seeing wind streamlines and understanding why the route matters
+
+---
+
+## Development Guidelines
+
+### Incremental Implementation
+
+When implementing features, **build incrementally** with discrete, testable steps:
+
+1. **One task at a time** - Complete and verify each component before moving to the next
+2. **Test after each step** - Run the code to confirm it works before continuing
+3. **Small commits** - Each task should result in working, committable code
+4. **Dependencies first** - Build foundational components before those that depend on them
+
+### Implementation Order
+
+Follow this sequence for the routing algorithm:
+
+1. **Step 1: Core data structures** - `Vector3`, `GridNode` classes
+2. **Step 2: Grid creation** - `Grid3D` with node generation and neighbor lookup
+3. **Step 3: Building geometry** - `Building` class with collision detection
+4. **Step 4: Mock data generator** - Generate test wind/building data
+5. **Step 5: Wind field** - `WindField` class with interpolation
+6. **Step 6: Cost calculator** - Edge cost computation with wind awareness
+7. **Step 7: Dijkstra router** - Pathfinding with exploration history
+8. **Step 8: Naive router** - A* comparison baseline
+9. **Step 9: Path smoother** - Spline interpolation
+10. **Step 10: Metrics calculator** - All 5 metrics from spec
+11. **Step 11: Serializer** - JSON output for frontend
+12. **Step 12: Main entry point** - CLI integration
+
+### Verification at Each Step
+
+After completing each step:
+- Run unit tests or manual verification
+- Confirm the component integrates with previous work
+- Document any deviations from the plan
