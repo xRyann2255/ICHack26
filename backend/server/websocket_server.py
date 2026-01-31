@@ -62,16 +62,22 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ServerConfig:
-    """Server configuration."""
+    """Server configuration.
+
+    Coordinate system (Y-up, matches Three.js):
+    - X: width (east-west)
+    - Y: height (vertical/altitude)
+    - Z: depth (north-south)
+    """
     host: str = "localhost"
     port: int = 8765
 
-    # Scene configuration
+    # Scene configuration (x, y_height, z_depth)
     bounds_min: tuple = (0, 0, 0)
-    bounds_max: tuple = (200, 200, 80)
+    bounds_max: tuple = (200, 80, 200)  # (x, y_height, z_depth)
     grid_resolution: float = 10.0
     wind_resolution: float = 5.0
-    base_wind: tuple = (8.0, 2.0, 0.0)
+    base_wind: tuple = (8.0, 0.0, 2.0)  # (vx, vy_vertical, vz)
     num_buildings: int = 4
     random_seed: int = 42
 

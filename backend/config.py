@@ -10,18 +10,28 @@ from typing import List, Tuple, Optional
 
 @dataclass
 class SceneConfig:
-    """Scene/world configuration."""
+    """Scene/world configuration.
+
+    Coordinate system (Y-up, matches Three.js):
+    - X: width (east-west)
+    - Y: height (vertical/altitude)
+    - Z: depth (north-south)
+    """
     bounds_min: Tuple[float, float, float] = (0, 0, 0)
-    bounds_max: Tuple[float, float, float] = (500, 500, 150)
+    bounds_max: Tuple[float, float, float] = (500, 150, 500)  # (x, y_height, z_depth)
     grid_resolution: float = 10.0  # meters between grid nodes
 
 
 @dataclass
 class WindConfig:
-    """Wind field configuration."""
-    base_wind: Tuple[float, float, float] = (8.0, 3.0, 0.0)  # m/s
+    """Wind field configuration.
+
+    Wind vector is (vx, vy, vz) where Y is vertical.
+    Base wind is primarily horizontal (X direction with some Z).
+    """
+    base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0)  # m/s (x, y_vertical, z_depth)
     field_resolution: float = 5.0  # meters between wind samples
-    altitude_factor: float = 0.02  # wind increase per meter altitude
+    altitude_factor: float = 0.02  # wind increase per meter altitude (Y axis)
 
 
 @dataclass
@@ -62,39 +72,41 @@ class DemoConfig:
 
     def __post_init__(self):
         # Default scenarios if none provided
+        # Coordinate system: X=width, Y=height(altitude), Z=depth
         if not self.scenarios:
             bmin = self.scene.bounds_min
             bmax = self.scene.bounds_max
-            mid_z = (bmin[2] + bmax[2]) / 2
+            mid_y = (bmin[1] + bmax[1]) / 2  # Mid altitude (Y is vertical)
 
             self.scenarios = [
                 # Corner to corner (diagonal)
                 ScenarioConfig(
-                    start=(bmin[0] + 20, bmin[1] + 20, mid_z),
-                    end=(bmax[0] - 20, bmax[1] - 20, mid_z),
+                    start=(bmin[0] + 20, mid_y, bmin[2] + 20),
+                    end=(bmax[0] - 20, mid_y, bmax[2] - 20),
                     name="diagonal"
                 ),
-                # Against wind (hardest)
+                # Against wind (hardest) - wind is primarily in +X direction
                 ScenarioConfig(
-                    start=(bmax[0] - 20, (bmin[1] + bmax[1]) / 2, mid_z),
-                    end=(bmin[0] + 20, (bmin[1] + bmax[1]) / 2, mid_z),
+                    start=(bmax[0] - 20, mid_y, (bmin[2] + bmax[2]) / 2),
+                    end=(bmin[0] + 20, mid_y, (bmin[2] + bmax[2]) / 2),
                     name="against_wind"
                 ),
                 # With wind (easiest)
                 ScenarioConfig(
-                    start=(bmin[0] + 20, (bmin[1] + bmax[1]) / 2, mid_z),
-                    end=(bmax[0] - 20, (bmin[1] + bmax[1]) / 2, mid_z),
+                    start=(bmin[0] + 20, mid_y, (bmin[2] + bmax[2]) / 2),
+                    end=(bmax[0] - 20, mid_y, (bmin[2] + bmax[2]) / 2),
                     name="with_wind"
                 ),
             ]
 
 
 # Preset configurations
+# Bounds are (x_width, y_height, z_depth)
 PRESETS = {
     "demo": DemoConfig(),
     "small": DemoConfig(
         scene=SceneConfig(
-            bounds_max=(200, 200, 80),
+            bounds_max=(200, 80, 200),  # (x, y_height, z_depth)
             grid_resolution=10.0
         ),
         buildings=BuildingConfig(num_buildings=4),
@@ -102,7 +114,7 @@ PRESETS = {
     ),
     "large": DemoConfig(
         scene=SceneConfig(
-            bounds_max=(1000, 1000, 200),
+            bounds_max=(1000, 200, 1000),  # (x, y_height, z_depth)
             grid_resolution=20.0
         ),
         buildings=BuildingConfig(num_buildings=20),
