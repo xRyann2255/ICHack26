@@ -606,6 +606,104 @@ class VoxelGrid:
 
         return False
 
+    def segments_intersect_batch(
+        self,
+        starts: np.ndarray,
+        ends: np.ndarray,
+        num_samples_per_edge: int = 5
+    ) -> np.ndarray:
+        """
+        Batch check if line segments pass through any occupied voxels.
+
+        Uses vectorized operations for much faster collision checking
+        when processing many edges.
+
+        Args:
+            starts: (N, 3) array of segment start points
+            ends: (N, 3) array of segment end points
+            num_samples_per_edge: Number of sample points per edge (default 5)
+
+        Returns:
+            (N,) boolean array, True if segment intersects occupied voxel
+        """
+        n_edges = len(starts)
+        if n_edges == 0:
+            return np.array([], dtype=bool)
+
+        # Quick bounds check - entirely above mesh = clear
+        min_y = np.minimum(starts[:, 1], ends[:, 1])
+        above_mesh = min_y > self.max_bounds[1] + self.voxel_size
+
+        # Quick bounds check - entirely outside XZ bounds = clear
+        max_x = np.maximum(starts[:, 0], ends[:, 0])
+        min_x = np.minimum(starts[:, 0], ends[:, 0])
+        max_z = np.maximum(starts[:, 2], ends[:, 2])
+        min_z = np.minimum(starts[:, 2], ends[:, 2])
+
+        outside_xz = (
+            (max_x < self.min_bounds[0] - self.voxel_size) |
+            (min_x > self.max_bounds[0] + self.voxel_size) |
+            (max_z < self.min_bounds[2] - self.voxel_size) |
+            (min_z > self.max_bounds[2] + self.voxel_size)
+        )
+
+        # Edges that are clearly outside don't need detailed checking
+        needs_checking = ~(above_mesh | outside_xz)
+        results = np.zeros(n_edges, dtype=bool)
+
+        if not np.any(needs_checking):
+            return results
+
+        # Get indices of edges that need checking
+        check_indices = np.where(needs_checking)[0]
+        check_starts = starts[check_indices]
+        check_ends = ends[check_indices]
+        n_check = len(check_indices)
+
+        # Sample points along each edge
+        # Shape: (n_check, num_samples, 3)
+        t = np.linspace(0, 1, num_samples_per_edge).reshape(1, -1, 1)
+        directions = (check_ends - check_starts).reshape(n_check, 1, 3)
+        sample_points = check_starts.reshape(n_check, 1, 3) + t * directions
+
+        # Flatten for batch voxel lookup: (n_check * num_samples, 3)
+        flat_points = sample_points.reshape(-1, 3)
+
+        # Convert to voxel indices (vectorized)
+        voxel_coords = ((flat_points - self.min_bounds) / self.voxel_size).astype(np.int32)
+        voxel_coords = np.clip(voxel_coords, 0, [self.nx - 1, self.ny - 1, self.nz - 1])
+
+        # Check if points are within bounds
+        in_bounds = (
+            (flat_points[:, 0] >= self.min_bounds[0]) &
+            (flat_points[:, 0] <= self.max_bounds[0]) &
+            (flat_points[:, 1] >= self.min_bounds[1]) &
+            (flat_points[:, 1] <= self.max_bounds[1]) &
+            (flat_points[:, 2] >= self.min_bounds[2]) &
+            (flat_points[:, 2] <= self.max_bounds[2])
+        )
+
+        # Look up occupancy for all points at once
+        # Only check occupied status for in-bounds points
+        occupied_flat = np.zeros(len(flat_points), dtype=bool)
+        in_bounds_idx = np.where(in_bounds)[0]
+        if len(in_bounds_idx) > 0:
+            in_bounds_coords = voxel_coords[in_bounds_idx]
+            occupied_flat[in_bounds_idx] = self.occupied[
+                in_bounds_coords[:, 0],
+                in_bounds_coords[:, 1],
+                in_bounds_coords[:, 2]
+            ]
+
+        # Reshape back to (n_check, num_samples) and check if ANY sample is occupied
+        occupied_per_edge = occupied_flat.reshape(n_check, num_samples_per_edge)
+        edge_collides = np.any(occupied_per_edge, axis=1)
+
+        # Store results back
+        results[check_indices] = edge_collides
+
+        return results
+
 
 class MeshCollisionChecker:
     """Collision checker that uses voxelized STL mesh for fast queries."""
@@ -634,3 +732,23 @@ class MeshCollisionChecker:
         if not node_a.is_valid or not node_b.is_valid:
             return False
         return not self.edge_intersects_building(node_a.position, node_b.position)
+
+    def edges_valid_batch(
+        self,
+        starts: np.ndarray,
+        ends: np.ndarray,
+        num_samples: int = 5
+    ) -> np.ndarray:
+        """
+        Batch check if edges are valid (no collision).
+
+        Args:
+            starts: (N, 3) array of edge start positions
+            ends: (N, 3) array of edge end positions
+            num_samples: Number of sample points per edge
+
+        Returns:
+            (N,) boolean array, True if edge is valid (no collision)
+        """
+        collides = self.voxel_grid.segments_intersect_batch(starts, ends, num_samples)
+        return ~collides

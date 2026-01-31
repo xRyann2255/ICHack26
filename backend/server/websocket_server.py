@@ -184,18 +184,47 @@ class WebSocketServer:
         logger.info(f"Grid: {self.grid.nx}x{self.grid.ny}x{self.grid.nz} = {self.grid.total_nodes} nodes")
 
         # Setup routers (using mesh collision detection)
-        logger.info("Setting up routers...")
+        # Run both routers' edge computation in parallel for faster startup
+        logger.info("Setting up routers (parallel edge computation)...")
+
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        router_start_time = time.time()
 
         calc = CostCalculator(self.wind_field, WeightConfig.speed_priority())
-        # Pass existing collision_checker to avoid rebuilding voxel grid
-        calc.precompute_edge_costs(self.grid, collision_checker=self.collision_checker)
-        logger.info(f"Computed {calc.edge_count} wind-aware edges")
+        self.naive_router = NaiveRouter(self.grid, capture_interval=50)
+
+        def compute_wind_edges():
+            """Compute wind-aware edge costs using vectorized method."""
+            calc.precompute_edge_costs_vectorized(
+                self.grid,
+                collision_checker=self.collision_checker
+            )
+            return calc.edge_count
+
+        def compute_naive_edges():
+            """Compute naive router valid edges."""
+            self.naive_router.precompute_valid_edges(
+                collision_checker=self.collision_checker
+            )
+            return len(self.naive_router._valid_edges)
+
+        # Run both in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            wind_future = executor.submit(compute_wind_edges)
+            naive_future = executor.submit(compute_naive_edges)
+
+            # Wait for both to complete
+            wind_edge_count = wind_future.result()
+            naive_edge_count = naive_future.result()
+
+        router_elapsed = time.time() - router_start_time
+        logger.info(f"Router setup complete in {router_elapsed:.2f}s")
+        logger.info(f"  - Wind-aware edges: {wind_edge_count}")
+        logger.info(f"  - Naive edges: {naive_edge_count}")
 
         self.wind_router = DijkstraRouter(self.grid, calc, capture_interval=50)
-
-        self.naive_router = NaiveRouter(self.grid, capture_interval=50)
-        # Pass existing collision_checker to avoid rebuilding voxel grid
-        self.naive_router.precompute_valid_edges(collision_checker=self.collision_checker)
 
         self.smoother = PathSmoother(points_per_segment=5)
         
