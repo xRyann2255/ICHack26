@@ -78,6 +78,7 @@ class ServerConfig:
     grid_resolution: float = 10.0
     wind_resolution: float = 5.0
     base_wind: tuple = (8.0, 0.0, 2.0)  # (vx, vy_vertical, vz)
+    random_seed: int = 42
 
     # STL file path - defaults to southken.stl in project root
     stl_path: str = "southken.stl"
@@ -121,7 +122,7 @@ class WebSocketServer:
 
         logger.info("Initializing server...")
 
-        gen = MockDataGenerator(seed=self.config.random_seed)
+        gen = MockDataGenerator()
 
         # Resolve STL path - check multiple locations
         stl_path = self.config.stl_path
