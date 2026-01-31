@@ -1488,49 +1488,237 @@ type SimulationState =
 
 ---
 
-#### Step 8: Side-by-Side View
+#### Step 8: Two-Phase Visualization (Route Creation → Drone Flight)
 
-**Goal:** Two 3D panels showing naive vs optimized simultaneously.
+**Goal:** A cinematic two-phase demo that first shows the routes being computed, then shows the drones flying them.
+
+---
+
+##### Phase 1: Route Creation Visualization
+
+**Description:** Camera pans along as each route is being created, showing the pathfinding algorithm exploring the space and building the path in real-time.
 
 **Tasks:**
-- [ ] Create layout with two `<Canvas>` components
-- [ ] Sync camera between panels (or allow independent control)
-- [ ] Label panels ("Naive Route" / "Wind-Optimized Route")
-- [ ] Each panel has its own drone following its route
-- [ ] Shared wind field and buildings
+- [ ] Create `RouteCreationView` component with single `<Canvas>`
+- [ ] Animate path drawing - show waypoints appearing one by one
+- [ ] Camera follows the path as it's being created (smooth pan/dolly)
+- [ ] Show exploration nodes briefly (Dijkstra visited nodes fading in/out)
+- [ ] Side-by-side or sequential: show naive route creation, then optimized
+- [ ] Visual difference: naive path appears as straight segments, optimized curves around obstacles
+- [ ] Transition effect when route creation completes (camera pulls back to overview)
 
-**Test:** Two side-by-side views, each with a drone following different paths.
-
-**Files:**
-```
-src/
-├── App.tsx               # Layout with two panels
-├── components/
-│   ├── SimulationPanel.tsx   # Single 3D view
-│   └── SplitView.tsx         # Side-by-side container
-```
-
-**Layout Pattern:**
+**Camera Behavior:**
 ```tsx
-function SplitView() {
+// Camera follows the path creation
+function useRouteCreationCamera(pathProgress: number, path: Vector3[]) {
+  const cameraRef = useRef<THREE.PerspectiveCamera>();
+
+  useFrame(() => {
+    if (!cameraRef.current || path.length === 0) return;
+
+    // Get current point along path based on progress (0-1)
+    const currentIndex = Math.floor(pathProgress * (path.length - 1));
+    const currentPoint = path[currentIndex];
+    const nextPoint = path[Math.min(currentIndex + 1, path.length - 1)];
+
+    // Position camera above and behind current point
+    const offset = new THREE.Vector3(0, 30, -50); // Above and behind
+    const direction = nextPoint.clone().sub(currentPoint).normalize();
+    const cameraPos = currentPoint.clone().add(offset);
+
+    // Smooth camera movement
+    cameraRef.current.position.lerp(cameraPos, 0.05);
+    cameraRef.current.lookAt(currentPoint);
+  });
+
+  return cameraRef;
+}
+```
+
+**Path Animation:**
+```tsx
+function AnimatedPath({ path, progress }: { path: Vector3[], progress: number }) {
+  // Only show path up to current progress
+  const visiblePoints = Math.floor(progress * path.length);
+  const visiblePath = path.slice(0, visiblePoints);
+
+  return (
+    <>
+      {/* Drawn path */}
+      <Line points={visiblePath} color="cyan" lineWidth={3} />
+
+      {/* Current exploration point (glowing) */}
+      {visiblePoints > 0 && (
+        <mesh position={path[visiblePoints - 1]}>
+          <sphereGeometry args={[2, 16, 16]} />
+          <meshBasicMaterial color="yellow" />
+        </mesh>
+      )}
+    </>
+  );
+}
+```
+
+---
+
+##### Phase 2: Third-Person Drone Flight
+
+**Description:** After routes are shown, switch to side-by-side view with third-person cameras following each drone as they fly their respective routes.
+
+**Tasks:**
+- [ ] Create `DroneFlightView` component with two `<Canvas>` panels
+- [ ] Third-person camera follows behind each drone
+- [ ] Camera smoothly tracks drone position and heading
+- [ ] Show drone model rotating/crabbing into wind
+- [ ] Display real-time metrics (speed, effort) per panel
+- [ ] Wind streamlines visible in both panels
+- [ ] Sync playback so both drones start simultaneously
+
+**Third-Person Camera:**
+```tsx
+function ThirdPersonCamera({ dronePosition, droneHeading }: Props) {
+  const cameraRef = useRef<THREE.PerspectiveCamera>();
+
+  useFrame(() => {
+    if (!cameraRef.current) return;
+
+    // Camera offset: behind and above the drone
+    const offset = new THREE.Vector3(-20, 10, 0); // Behind, above
+
+    // Rotate offset by drone heading
+    const heading = new THREE.Vector3(...droneHeading);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(1, 0, 0),
+      heading.normalize()
+    );
+    offset.applyQuaternion(quaternion);
+
+    // Position camera
+    const targetPos = new THREE.Vector3(...dronePosition).add(offset);
+    cameraRef.current.position.lerp(targetPos, 0.1);
+
+    // Look at drone (slightly ahead)
+    const lookTarget = new THREE.Vector3(...dronePosition)
+      .add(heading.multiplyScalar(10));
+    cameraRef.current.lookAt(lookTarget);
+  });
+
+  return <PerspectiveCamera ref={cameraRef} makeDefault />;
+}
+```
+
+**Side-by-Side Layout:**
+```tsx
+function DroneFlightView() {
   return (
     <div style={{ display: 'flex', width: '100%', height: '100vh' }}>
-      <div style={{ flex: 1, borderRight: '2px solid #333' }}>
-        <h3>Naive Route</h3>
+      <div style={{ flex: 1, borderRight: '2px solid #333', position: 'relative' }}>
+        <div className="panel-label">Naive Route</div>
         <Canvas>
+          <ThirdPersonCamera
+            dronePosition={naiveFrame.position}
+            droneHeading={naiveFrame.heading}
+          />
           <SimulationScene route="naive" />
         </Canvas>
+        <MetricsOverlay frame={naiveFrame} />
       </div>
-      <div style={{ flex: 1 }}>
-        <h3>Wind-Optimized Route</h3>
+      <div style={{ flex: 1, position: 'relative' }}>
+        <div className="panel-label">Wind-Optimized Route</div>
         <Canvas>
+          <ThirdPersonCamera
+            dronePosition={optimizedFrame.position}
+            droneHeading={optimizedFrame.heading}
+          />
           <SimulationScene route="optimized" />
         </Canvas>
+        <MetricsOverlay frame={optimizedFrame} />
       </div>
     </div>
   );
 }
 ```
+
+---
+
+##### Phase Transition
+
+**Tasks:**
+- [ ] Create `DemoOrchestrator` component to manage phase transitions
+- [ ] Phase 1 → Phase 2 transition with smooth camera animation
+- [ ] Optional: brief pause with "Routes Computed" overlay before Phase 2
+- [ ] State machine: `idle → route_creation → transition → drone_flight → complete`
+
+**Orchestrator Pattern:**
+```tsx
+type DemoPhase = 'idle' | 'route_creation' | 'transition' | 'drone_flight' | 'complete';
+
+function DemoOrchestrator() {
+  const [phase, setPhase] = useState<DemoPhase>('idle');
+  const [routeProgress, setRouteProgress] = useState(0);
+
+  // Phase 1: Route creation animation
+  useEffect(() => {
+    if (phase === 'route_creation') {
+      const interval = setInterval(() => {
+        setRouteProgress(p => {
+          if (p >= 1) {
+            setPhase('transition');
+            return 1;
+          }
+          return p + 0.01; // Adjust speed
+        });
+      }, 50);
+      return () => clearInterval(interval);
+    }
+  }, [phase]);
+
+  // Transition to Phase 2
+  useEffect(() => {
+    if (phase === 'transition') {
+      setTimeout(() => setPhase('drone_flight'), 2000); // 2s pause
+    }
+  }, [phase]);
+
+  return (
+    <>
+      {phase === 'route_creation' && (
+        <RouteCreationView progress={routeProgress} />
+      )}
+      {phase === 'transition' && (
+        <TransitionOverlay message="Routes Computed - Starting Flight Simulation" />
+      )}
+      {phase === 'drone_flight' && (
+        <DroneFlightView />
+      )}
+      {phase === 'complete' && (
+        <MetricsComparison />
+      )}
+    </>
+  );
+}
+```
+
+---
+
+**Files:**
+```
+src/
+├── App.tsx                     # DemoOrchestrator integration
+├── components/
+│   ├── DemoOrchestrator.tsx    # Phase state machine
+│   ├── RouteCreationView.tsx   # Phase 1: animated route drawing
+│   ├── AnimatedPath.tsx        # Path that draws itself
+│   ├── DroneFlightView.tsx     # Phase 2: side-by-side drone flight
+│   ├── ThirdPersonCamera.tsx   # Camera that follows drone
+│   ├── TransitionOverlay.tsx   # "Routes Computed" overlay
+│   └── MetricsOverlay.tsx      # Real-time metrics per panel
+```
+
+**Test:**
+1. Phase 1: See camera pan as routes are drawn, showing pathfinding exploration
+2. Transition: Brief pause with overlay message
+3. Phase 2: Two side-by-side panels with third-person cameras following drones
 
 ---
 

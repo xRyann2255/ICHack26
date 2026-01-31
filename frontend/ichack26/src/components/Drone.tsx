@@ -357,19 +357,27 @@ export default function Drone({
     targetPositionRef.current.set(...frame.position)
 
     // Calculate target rotation from heading
-    const heading = new THREE.Vector3(...frame.heading).normalize()
+    const heading = new THREE.Vector3(...frame.heading)
+    const headingLength = heading.length()
 
-    // The drone's forward direction is +Z in local space (where the red cone points)
-    // We need to rotate from +Z to the heading direction
-    const forward = new THREE.Vector3(0, 0, 1)
-    targetQuaternionRef.current.setFromUnitVectors(forward, heading)
+    // Safety check: ensure heading is valid before normalizing
+    if (headingLength > 0.01) {
+      heading.normalize()
 
-    // Smooth interpolation for position
-    currentPositionRef.current.lerp(targetPositionRef.current, Math.min(1, delta * 10))
+      // The drone's forward direction is +Z in local space (where the red cone points)
+      // We need to rotate from +Z to the heading direction
+      const forward = new THREE.Vector3(0, 0, 1)
+      targetQuaternionRef.current.setFromUnitVectors(forward, heading)
+    }
+    // If heading is invalid, keep the previous rotation (don't update targetQuaternionRef)
+
+    // Smooth interpolation for position - use faster lerp for more responsive movement
+    const posLerpFactor = Math.min(1, delta * 15)
+    currentPositionRef.current.lerp(targetPositionRef.current, posLerpFactor)
     groupRef.current.position.copy(currentPositionRef.current)
 
     // Smooth interpolation for rotation
-    groupRef.current.quaternion.slerp(targetQuaternionRef.current, Math.min(1, delta * 8))
+    groupRef.current.quaternion.slerp(targetQuaternionRef.current, Math.min(1, delta * 10))
   })
 
   // Don't render if no frame data

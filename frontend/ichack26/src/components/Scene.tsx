@@ -1,5 +1,6 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { OrbitControls, Grid } from '@react-three/drei'
+import { useThree } from '@react-three/fiber'
 import Terrain from './Terrain'
 import WindField from './WindField'
 import { DualPaths } from './FlightPath'
@@ -29,12 +30,45 @@ function Lighting() {
   )
 }
 
+/**
+ * Adjusts camera to fit the scene when bounds are loaded.
+ */
+function CameraController() {
+  const { camera } = useThree()
+  const { sceneBounds } = useScene()
+  const hasAdjusted = useRef(false)
+
+  useEffect(() => {
+    if (sceneBounds && !hasAdjusted.current) {
+      const { center, size } = sceneBounds
+      // Position camera to see the whole scene
+      // Distance based on scene size
+      const maxDim = Math.max(size[0], size[2])
+      const distance = maxDim * 0.8
+      const height = Math.max(size[1] * 2, 200)
+
+      camera.position.set(
+        center[0] + distance * 0.5,
+        height,
+        center[2] + distance * 0.5
+      )
+      camera.lookAt(center[0], center[1], center[2])
+      camera.updateProjectionMatrix()
+      hasAdjusted.current = true
+      console.log('[CameraController] Adjusted camera to scene bounds:', sceneBounds)
+    }
+  }, [sceneBounds, camera])
+
+  return null
+}
+
 export default function Scene() {
   const { windFieldData, paths, currentFrame, simulation } = useScene()
 
   return (
     <>
       <Lighting />
+      <CameraController />
       <Suspense fallback={<LoadingBox />}>
         <Terrain />
       </Suspense>
@@ -78,14 +112,14 @@ export default function Scene() {
       {/* Ground grid for reference */}
       <Grid
         position={[0, 0, 0]}
-        args={[100, 100]}
-        cellSize={5}
+        args={[200, 200]}
+        cellSize={20}
         cellThickness={0.5}
-        cellColor="#444"
-        sectionSize={20}
+        cellColor="#333"
+        sectionSize={100}
         sectionThickness={1}
-        sectionColor="#888"
-        fadeDistance={200}
+        sectionColor="#555"
+        fadeDistance={1500}
         infiniteGrid
       />
 

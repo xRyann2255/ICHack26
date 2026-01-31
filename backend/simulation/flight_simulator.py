@@ -201,10 +201,17 @@ class FlightSimulator:
             to_target = target - state.position
             distance_to_target = to_target.magnitude()
 
+            # Check if we reached the waypoint
             if distance_to_target < self.params.waypoint_threshold:
                 # Reached waypoint, move to next
                 state.target_waypoint_index += 1
-                continue
+                # Check if we've completed the path
+                if state.target_waypoint_index >= len(waypoints):
+                    break
+                # Update target to new waypoint and recalculate
+                target = waypoints[state.target_waypoint_index]
+                to_target = target - state.position
+                distance_to_target = to_target.magnitude()
 
             desired_direction = to_target.normalized()
 
@@ -335,8 +342,9 @@ class FlightSimulator:
         # sin(crab_angle) = perp_speed / airspeed
         # But we must ensure we still make forward progress
 
-        # Maximum crab angle we'll allow (70 degrees) to ensure forward progress
-        max_crab_angle = math.radians(70.0)
+        # Maximum crab angle we'll allow (30 degrees) to prioritize forward progress
+        # Lower angle means drone drifts off course but always moves forward
+        max_crab_angle = math.radians(30.0)
         max_sin = math.sin(max_crab_angle)
 
         # Calculate required sin of crab angle

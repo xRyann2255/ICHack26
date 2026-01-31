@@ -485,25 +485,137 @@ class STLLoader:
         )
 
 
-class MeshCollisionChecker:
-    """Collision checker that uses STL mesh directly."""
+class VoxelGrid:
+    """
+    Fast voxel-based collision detection.
 
-    def __init__(self, mesh: STLMesh):
+    Pre-computes which voxels are occupied by the mesh, enabling
+    O(1) collision checks instead of O(n) triangle checks.
+    """
+
+    def __init__(self, mesh: STLMesh, voxel_size: float = 5.0):
+        """
+        Initialize voxel grid from mesh.
+
+        Args:
+            mesh: STL mesh to voxelize
+            voxel_size: Size of each voxel in meters
+        """
+        self.voxel_size = voxel_size
+        self.min_bounds = mesh.min_bounds.copy()
+        self.max_bounds = mesh.max_bounds.copy()
+
+        # Calculate grid dimensions
+        size = self.max_bounds - self.min_bounds
+        self.nx = max(1, int(np.ceil(size[0] / voxel_size)))
+        self.ny = max(1, int(np.ceil(size[1] / voxel_size)))
+        self.nz = max(1, int(np.ceil(size[2] / voxel_size)))
+
+        print(f"Creating voxel grid: {self.nx}x{self.ny}x{self.nz} = {self.nx*self.ny*self.nz} voxels")
+
+        # Create occupancy grid
+        self.occupied = np.zeros((self.nx, self.ny, self.nz), dtype=bool)
+
+        # Mark voxels that contain triangles
+        for tri in mesh.triangles:
+            # Get voxel range for this triangle
+            tri_min = tri.min_bounds
+            tri_max = tri.max_bounds
+
+            ix_min = max(0, int((tri_min[0] - self.min_bounds[0]) / voxel_size))
+            ix_max = min(self.nx - 1, int((tri_max[0] - self.min_bounds[0]) / voxel_size))
+            iy_min = max(0, int((tri_min[1] - self.min_bounds[1]) / voxel_size))
+            iy_max = min(self.ny - 1, int((tri_max[1] - self.min_bounds[1]) / voxel_size))
+            iz_min = max(0, int((tri_min[2] - self.min_bounds[2]) / voxel_size))
+            iz_max = min(self.nz - 1, int((tri_max[2] - self.min_bounds[2]) / voxel_size))
+
+            self.occupied[ix_min:ix_max+1, iy_min:iy_max+1, iz_min:iz_max+1] = True
+
+        occupied_count = np.sum(self.occupied)
+        print(f"Voxel grid: {occupied_count} occupied ({100*occupied_count/(self.nx*self.ny*self.nz):.1f}%)")
+
+    def _pos_to_voxel(self, pos: np.ndarray) -> Tuple[int, int, int]:
+        """Convert position to voxel indices."""
+        idx = ((pos - self.min_bounds) / self.voxel_size).astype(int)
+        return tuple(np.clip(idx, 0, [self.nx-1, self.ny-1, self.nz-1]))
+
+    def point_occupied(self, point: Vector3) -> bool:
+        """Check if a point is in an occupied voxel."""
+        pos = np.array([point.x, point.y, point.z])
+
+        # Check bounds
+        if np.any(pos < self.min_bounds) or np.any(pos > self.max_bounds):
+            return False
+
+        ix, iy, iz = self._pos_to_voxel(pos)
+        return self.occupied[ix, iy, iz]
+
+    def segment_intersects(self, start: Vector3, end: Vector3) -> bool:
+        """
+        Check if a line segment passes through any occupied voxel.
+
+        Uses 3D DDA algorithm for efficient voxel traversal.
+        """
+        p0 = np.array([start.x, start.y, start.z])
+        p1 = np.array([end.x, end.y, end.z])
+
+        # Quick bounds check - if entirely above mesh, it's clear
+        if min(p0[1], p1[1]) > self.max_bounds[1] + self.voxel_size:
+            return False
+
+        # If entirely outside XZ bounds, it's clear
+        if (max(p0[0], p1[0]) < self.min_bounds[0] - self.voxel_size or
+            min(p0[0], p1[0]) > self.max_bounds[0] + self.voxel_size or
+            max(p0[2], p1[2]) < self.min_bounds[2] - self.voxel_size or
+            min(p0[2], p1[2]) > self.max_bounds[2] + self.voxel_size):
+            return False
+
+        direction = p1 - p0
+        length = np.linalg.norm(direction)
+        if length < 1e-9:
+            return self.point_occupied(start)
+
+        # DDA (Digital Differential Analyzer) for voxel traversal
+        # Sample at intervals smaller than voxel size
+        step = self.voxel_size * 0.5
+        num_steps = max(2, int(length / step) + 1)
+
+        for i in range(num_steps):
+            t = i / (num_steps - 1) if num_steps > 1 else 0
+            pos = p0 + t * direction
+
+            # Check bounds
+            if np.any(pos < self.min_bounds) or np.any(pos > self.max_bounds):
+                continue
+
+            ix, iy, iz = self._pos_to_voxel(pos)
+            if self.occupied[ix, iy, iz]:
+                return True
+
+        return False
+
+
+class MeshCollisionChecker:
+    """Collision checker that uses voxelized STL mesh for fast queries."""
+
+    def __init__(self, mesh: STLMesh, voxel_size: float = 5.0):
         """
         Initialize with an STL mesh.
 
         Args:
             mesh: STL mesh for collision detection
+            voxel_size: Voxel size for occupancy grid (smaller = more accurate but slower to build)
         """
         self.mesh = mesh
+        self.voxel_grid = VoxelGrid(mesh, voxel_size=voxel_size)
 
     def point_in_building(self, point: Vector3) -> bool:
-        """Check if a point is inside the mesh."""
-        return self.mesh.point_inside(point)
+        """Check if a point is inside the mesh (voxelized)."""
+        return self.voxel_grid.point_occupied(point)
 
     def edge_intersects_building(self, start: Vector3, end: Vector3) -> bool:
-        """Check if an edge intersects the mesh."""
-        return self.mesh.segment_intersects(start, end)
+        """Check if an edge intersects the mesh (voxelized)."""
+        return self.voxel_grid.segment_intersects(start, end)
 
     def node_edge_valid(self, node_a, node_b) -> bool:
         """Check if an edge between two nodes is valid (no collision)."""

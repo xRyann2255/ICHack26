@@ -49,7 +49,7 @@ from ..grid.grid_3d import Grid3D
 from ..data.wind_field import WindField
 from ..data.building_geometry import BuildingCollection
 from ..data.mock_generator import MockDataGenerator
-from ..data.stl_loader import STLLoader
+from ..data.stl_loader import STLLoader, STLMesh, MeshCollisionChecker
 from ..routing.cost_calculator import CostCalculator, WeightConfig
 from ..routing.dijkstra import DijkstraRouter
 from ..routing.naive_router import NaiveRouter
@@ -111,6 +111,8 @@ class WebSocketServer:
         self.smoother: Optional[PathSmoother] = None
         self.metrics_calc: Optional[MetricsCalculator] = None
         self.flight_sim: Optional[FlightSimulator] = None
+        self.mesh: Optional[STLMesh] = None  # STL mesh for collision
+        self.collision_checker: Optional[MeshCollisionChecker] = None
         self._initialized = False
 
     def initialize(self) -> None:
@@ -162,13 +164,19 @@ class WebSocketServer:
         logger.info("Setting up routers...")
 
         calc = CostCalculator(self.wind_field, WeightConfig.speed_priority())
-        calc.precompute_edge_costs(self.grid, self.buildings)
+        if self.mesh:
+            calc.precompute_edge_costs(self.grid, mesh=self.mesh)
+        else:
+            calc.precompute_edge_costs(self.grid, buildings=self.buildings)
         logger.info(f"Computed {calc.edge_count} wind-aware edges")
 
         self.wind_router = DijkstraRouter(self.grid, calc, capture_interval=50)
 
         self.naive_router = NaiveRouter(self.grid, capture_interval=50)
-        self.naive_router.precompute_valid_edges(self.buildings)
+        if self.mesh:
+            self.naive_router.precompute_valid_edges(mesh=self.mesh)
+        else:
+            self.naive_router.precompute_valid_edges(buildings=self.buildings)
 
         self.smoother = PathSmoother(points_per_segment=5)
         
@@ -430,10 +438,16 @@ class WebSocketServer:
                 waypoints_reached=len(path)
             )
 
+        # Override turn rate for smoother animation - allow faster turns
+        # Original was 90 deg/s which caused 10+ frames to complete a 90° turn
+        # Now 360 deg/s allows instant turns (completes any turn in 1-2 frames)
+        sim_params.max_turn_rate = 360.0
+
         # Dynamic airspeed parameters - drone can boost power when needed
+        # GREATLY increased to overcome any wind conditions
         base_airspeed = sim_params.max_airspeed  # Normal cruising speed (15 m/s)
-        max_boost_airspeed = base_airspeed * 4.0  # Can boost up to 4x (60 m/s)
-        min_desired_groundspeed = 8.0  # Target at least 8 m/s ground speed
+        max_boost_airspeed = 200.0  # Massively boosted - can fly 200 m/s if needed
+        min_desired_groundspeed = 15.0  # Target at least 15 m/s ground speed (was 8)
 
         # Initialize state
         state = DroneState(
@@ -447,6 +461,9 @@ class WebSocketServer:
         time = 0.0
         step = 0
         frames = []
+        last_log_step = -20  # Log every 20 steps
+        last_sent_position = None  # Track for duplicate detection
+        duplicate_count = 0
 
         while time < sim_params.max_time:
             if state.target_waypoint_index >= len(path):
@@ -455,6 +472,11 @@ class WebSocketServer:
 
             target = path[state.target_waypoint_index]
             wind = self.wind_field.get_wind_at(state.position)
+
+            # Log progress periodically
+            if step - last_log_step >= 20:
+                logger.info(f"[{route_name}] step={step} t={time:.1f}s pos=({state.position.x:.1f},{state.position.y:.1f},{state.position.z:.1f}) wp={state.target_waypoint_index}/{len(path)}")
+                last_log_step = step
 
             to_target = target - state.position
             distance_to_target = to_target.magnitude()
@@ -535,15 +557,13 @@ class WebSocketServer:
             groundspeed = ground_velocity.magnitude()
 
             # Ensure minimum forward progress to prevent getting stuck
-            min_groundspeed = 2.0  # m/s minimum (increased from 1.0)
+            # Use high minimum to guarantee visible progress
+            min_groundspeed = 10.0  # m/s minimum - always make good progress
             if groundspeed < min_groundspeed:
-                logger.debug(f"Low groundspeed {groundspeed:.3f} even with boost, forcing minimum")
-                # Scale up ground velocity to minimum speed
-                if groundspeed > 0.01:
-                    ground_velocity = ground_velocity * (min_groundspeed / groundspeed)
-                else:
-                    # Fallback: move in desired direction at minimum speed
-                    ground_velocity = desired_direction * min_groundspeed
+                logger.debug(f"Low groundspeed {groundspeed:.3f}, forcing minimum {min_groundspeed}")
+                # Force movement in DESIRED direction (toward waypoint), not current velocity direction
+                # This ensures we always make progress toward the goal
+                ground_velocity = desired_direction * min_groundspeed
                 groundspeed = min_groundspeed
 
             # Compute drift
@@ -582,6 +602,16 @@ class WebSocketServer:
             )
             frames.append(frame)
 
+            # Check for duplicate positions (would cause visual "stopping")
+            current_pos = (round(state.position.x, 2), round(state.position.y, 2), round(state.position.z, 2))
+            if last_sent_position == current_pos:
+                duplicate_count += 1
+                if duplicate_count <= 5:
+                    logger.warning(f"[{route_name}] Duplicate position detected at step {step}: {current_pos}")
+            else:
+                duplicate_count = 0
+            last_sent_position = current_pos
+
             # Send frame to client
             await self.send_json(websocket, {
                 "type": "frame",
@@ -596,6 +626,14 @@ class WebSocketServer:
             old_position = Vector3(state.position.x, state.position.y, state.position.z)
             position_delta = ground_velocity * sim_params.timestep
             state.position = old_position + position_delta
+
+            # Check for NaN/Inf (would cause stuck behavior)
+            import math
+            if (math.isnan(state.position.x) or math.isnan(state.position.y) or math.isnan(state.position.z) or
+                math.isinf(state.position.x) or math.isinf(state.position.y) or math.isinf(state.position.z)):
+                logger.error(f"[{route_name}] NaN/Inf position detected! Resetting to old_position")
+                logger.error(f"  ground_velocity={ground_velocity.to_list()}, delta={position_delta.to_list()}")
+                state.position = old_position
 
             # Safety check: ensure we actually made progress
             movement = (state.position - old_position).magnitude()
@@ -723,8 +761,9 @@ class WebSocketServer:
         if perp_speed < 0.1:
             return desired_direction, Vector3(0, 0, 0)
 
-        # Calculate crab angle, but limit to 70 degrees to ensure forward progress
-        max_crab_angle = math.radians(70.0)
+        # Calculate crab angle, but limit to 30 degrees to prioritize forward progress
+        # (was 70 degrees which caused too much sideways flying)
+        max_crab_angle = math.radians(30.0)
         max_sin = math.sin(max_crab_angle)
 
         sin_crab = min(max_sin, perp_speed / airspeed)
@@ -746,18 +785,42 @@ class WebSocketServer:
         """Turn toward target with rate limit."""
         import math
 
-        dot = max(-1.0, min(1.0, current.dot(target)))
+        # Ensure inputs are normalized
+        current_norm = current.normalized()
+        target_norm = target.normalized()
+
+        # Handle invalid inputs
+        if current_norm.magnitude() < 0.1:
+            return target_norm if target_norm.magnitude() > 0.1 else Vector3(1, 0, 0)
+        if target_norm.magnitude() < 0.1:
+            return current_norm
+
+        dot = max(-1.0, min(1.0, current_norm.dot(target_norm)))
         angle = math.acos(dot)
 
         if angle < 1e-6:
-            return target
+            return target_norm
 
         max_rad = math.radians(max_angle)
         if angle <= max_rad:
-            return target
+            return target_norm
 
         t = max_rad / angle
-        result = current * (1 - t) + target * t
+        result = current_norm * (1 - t) + target_norm * t
+
+        # Safety check: if interpolation produces a near-zero vector (happens with ~180° turns)
+        # use a perpendicular vector to break the symmetry
+        if result.magnitude() < 0.1:
+            # Create a perpendicular vector by crossing with up or right
+            up = Vector3(0, 1, 0)
+            perp = current_norm.cross(up)
+            if perp.magnitude() < 0.1:
+                right = Vector3(1, 0, 0)
+                perp = current_norm.cross(right)
+            perp = perp.normalized()
+            # Turn toward the perpendicular direction first
+            result = current_norm * 0.7 + perp * 0.3
+
         return result.normalized()
 
     async def send_json(self, websocket: WebSocketServerProtocol, data: Dict) -> None:
