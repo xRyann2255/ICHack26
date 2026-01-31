@@ -2,82 +2,97 @@
  * Metrics Panel Component
  *
  * Displays comparison metrics between naive and optimized routes
- * after simulation completes.
+ * after simulation completes. Features animated counters and
+ * visual highlighting of improvements.
  */
 
-import { useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useScene } from '../context/SceneContext';
-import type { RouteMetrics } from '../types/api';
+import MetricCard from './MetricCard';
 
 // ============================================================================
-// Types
+// Icons
 // ============================================================================
 
-interface MetricComparisonProps {
-  label: string;
-  naiveValue: number;
-  optimizedValue: number;
-  unit: string;
-  /** If true, lower is better (time, energy). If false, higher is better. */
-  lowerIsBetter?: boolean;
-  /** Number of decimal places */
-  decimals?: number;
-}
-
-// ============================================================================
-// Helper Components
-// ============================================================================
-
-function MetricComparison({
-  label,
-  naiveValue,
-  optimizedValue,
-  unit,
-  lowerIsBetter = true,
-  decimals = 1,
-}: MetricComparisonProps) {
-  const diff = naiveValue - optimizedValue;
-  const percentDiff = naiveValue > 0 ? (diff / naiveValue) * 100 : 0;
-
-  const isBetter = lowerIsBetter ? optimizedValue < naiveValue : optimizedValue > naiveValue;
-  const improvementText = lowerIsBetter
-    ? diff > 0 ? `${diff.toFixed(decimals)} ${unit} less` : `${(-diff).toFixed(decimals)} ${unit} more`
-    : diff < 0 ? `${(-diff).toFixed(decimals)} ${unit} more` : `${diff.toFixed(decimals)} ${unit} less`;
-
+function ClockIcon() {
   return (
-    <div style={styles.metricCard}>
-      <div style={styles.metricLabel}>{label}</div>
-      <div style={styles.metricValues}>
-        <div style={styles.metricColumn}>
-          <span style={styles.routeLabel}>Naive</span>
-          <span style={{ ...styles.metricValue, color: '#ff6b6b' }}>
-            {naiveValue.toFixed(decimals)} {unit}
-          </span>
-        </div>
-        <div style={styles.metricColumn}>
-          <span style={styles.routeLabel}>Optimized</span>
-          <span style={{ ...styles.metricValue, color: '#4ecdc4' }}>
-            {optimizedValue.toFixed(decimals)} {unit}
-          </span>
-        </div>
-      </div>
-      {Math.abs(percentDiff) > 0.1 && (
-        <div style={{
-          ...styles.improvement,
-          color: isBetter ? '#6bcb77' : '#ff6b6b',
-        }}>
-          {isBetter ? '+' : ''}{percentDiff.toFixed(1)}% {improvementText}
-        </div>
-      )}
-    </div>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+    </svg>
   );
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}m ${secs.toFixed(0)}s`;
+function RouteIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z" />
+    </svg>
+  );
+}
+
+function BatteryIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z" />
+    </svg>
+  );
+}
+
+function ShieldIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z" />
+    </svg>
+  );
+}
+
+function SpeedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z" />
+    </svg>
+  );
+}
+
+function WindIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M14.5 17c0 1.65-1.35 3-3 3s-3-1.35-3-3h2c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1H2v-2h9.5c1.65 0 3 1.35 3 3zM19 6.5C19 4.57 17.43 3 15.5 3S12 4.57 12 6.5h2c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S16.33 8 15.5 8H2v2h13.5c1.93 0 3.5-1.57 3.5-3.5zm-.5 4.5H2v2h16.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5v2c1.93 0 3.5-1.57 3.5-3.5S20.43 11 18.5 11z" />
+    </svg>
+  );
+}
+
+// ============================================================================
+// Animated Summary Stat Component
+// ============================================================================
+
+interface SummaryStatProps {
+  value: string;
+  label: string;
+  delay?: number;
+}
+
+function SummaryStat({ value, label, delay = 0 }: SummaryStatProps) {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
+
+  return (
+    <div
+      style={{
+        ...styles.summaryStat,
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(10px)',
+        transition: 'opacity 0.5s ease-out, transform 0.5s ease-out',
+      }}
+    >
+      <span style={styles.summaryValue}>{value}</span>
+      <span style={styles.summaryLabel}>{label}</span>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -86,9 +101,21 @@ function formatDuration(seconds: number): string {
 
 export default function MetricsPanel() {
   const { simulation, metrics } = useScene();
+  const [isVisible, setIsVisible] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   // Only show when simulation is complete with both metrics
   const showPanel = simulation.status === 'complete' && metrics.naive && metrics.optimized;
+
+  // Animate panel entrance
+  useEffect(() => {
+    if (showPanel) {
+      const timer = setTimeout(() => setIsVisible(true), 100);
+      return () => clearTimeout(timer);
+    } else {
+      setIsVisible(false);
+    }
+  }, [showPanel]);
 
   const summary = useMemo(() => {
     if (!metrics.naive || !metrics.optimized) return null;
@@ -118,92 +145,174 @@ export default function MetricsPanel() {
 
   if (!showPanel || !summary) return null;
 
+  // Format duration
+  const formatDuration = (seconds: number): string => {
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs.toFixed(0)}s`;
+  };
+
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h2 style={styles.title}>Flight Comparison</h2>
-        <div style={styles.subtitle}>Wind-Optimized vs Naive Route</div>
-      </div>
-
-      {/* Key Metrics */}
-      <div style={styles.metricsGrid}>
-        <MetricComparison
-          label="Flight Time"
-          naiveValue={summary.naive.total_flight_time}
-          optimizedValue={summary.optimized.total_flight_time}
-          unit="s"
-          lowerIsBetter={true}
-        />
-
-        <MetricComparison
-          label="Distance"
-          naiveValue={summary.naive.total_distance}
-          optimizedValue={summary.optimized.total_distance}
-          unit="m"
-          lowerIsBetter={true}
-          decimals={0}
-        />
-
-        <MetricComparison
-          label="Energy Used"
-          naiveValue={summary.naive.energy_consumption}
-          optimizedValue={summary.optimized.energy_consumption}
-          unit="Wh"
-          lowerIsBetter={true}
-          decimals={2}
-        />
-
-        <MetricComparison
-          label="Crash Risk"
-          naiveValue={summary.naive.crash_probability}
-          optimizedValue={summary.optimized.crash_probability}
-          unit="%"
-          lowerIsBetter={true}
-          decimals={2}
-        />
-
-        <MetricComparison
-          label="Avg Speed"
-          naiveValue={summary.naive.average_ground_speed}
-          optimizedValue={summary.optimized.average_ground_speed}
-          unit="m/s"
-          lowerIsBetter={false}
-        />
-
-        <MetricComparison
-          label="Turbulence Zones"
-          naiveValue={summary.naive.turbulence_zones_crossed}
-          optimizedValue={summary.optimized.turbulence_zones_crossed}
-          unit=""
-          lowerIsBetter={true}
-          decimals={0}
-        />
-      </div>
-
-      {/* Summary Box */}
-      <div style={styles.summaryBox}>
-        <div style={styles.summaryTitle}>Optimization Benefits</div>
-        <div style={styles.summaryStats}>
-          {summary.timeSaved > 0 && (
-            <div style={styles.summaryStat}>
-              <span style={styles.summaryValue}>{formatDuration(summary.timeSaved)}</span>
-              <span style={styles.summaryLabel}>faster</span>
-            </div>
-          )}
-          {summary.energySaved > 0 && (
-            <div style={styles.summaryStat}>
-              <span style={styles.summaryValue}>{summary.energyImprovement.toFixed(0)}%</span>
-              <span style={styles.summaryLabel}>less energy</span>
-            </div>
-          )}
-          {summary.riskReduction > 0 && (
-            <div style={styles.summaryStat}>
-              <span style={styles.summaryValue}>{summary.riskReduction.toFixed(1)}%</span>
-              <span style={styles.summaryLabel}>safer</span>
-            </div>
-          )}
+    <div
+      style={{
+        ...styles.container,
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(20px)',
+        transition: 'opacity 0.4s ease-out, transform 0.4s ease-out',
+      }}
+    >
+      {/* Header */}
+      <div style={styles.header} onClick={() => setIsMinimized(!isMinimized)}>
+        <div style={styles.headerContent}>
+          <h2 style={styles.title}>Flight Comparison</h2>
+          <div style={styles.subtitle}>Wind-Optimized vs Naive Route</div>
         </div>
+        <button style={styles.minimizeButton}>
+          {isMinimized ? '+' : '−'}
+        </button>
       </div>
+
+      {!isMinimized && (
+        <>
+          {/* Summary Box - Highlighted at top */}
+          <div style={styles.summaryBox}>
+            <div style={styles.summaryTitle}>Optimization Benefits</div>
+            <div style={styles.summaryStats}>
+              {summary.timeSaved > 0 && (
+                <SummaryStat
+                  value={formatDuration(summary.timeSaved)}
+                  label="faster"
+                  delay={200}
+                />
+              )}
+              {summary.energySaved > 0 && (
+                <SummaryStat
+                  value={`${summary.energyImprovement.toFixed(0)}%`}
+                  label="less energy"
+                  delay={400}
+                />
+              )}
+              {summary.riskReduction > 0 && (
+                <SummaryStat
+                  value={`${summary.riskReduction.toFixed(1)}%`}
+                  label="safer"
+                  delay={600}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Metrics Grid */}
+          <div style={styles.metricsGrid}>
+            <MetricCard
+              label="Flight Time"
+              naiveValue={summary.naive.total_flight_time}
+              optimizedValue={summary.optimized.total_flight_time}
+              unit="s"
+              lowerIsBetter={true}
+              decimals={1}
+              icon={<ClockIcon />}
+              animationDelay={0}
+            />
+
+            <MetricCard
+              label="Distance"
+              naiveValue={summary.naive.total_distance}
+              optimizedValue={summary.optimized.total_distance}
+              unit="m"
+              lowerIsBetter={true}
+              decimals={0}
+              icon={<RouteIcon />}
+              animationDelay={100}
+            />
+
+            <MetricCard
+              label="Energy Used"
+              naiveValue={summary.naive.energy_consumption}
+              optimizedValue={summary.optimized.energy_consumption}
+              unit="Wh"
+              lowerIsBetter={true}
+              decimals={2}
+              icon={<BatteryIcon />}
+              animationDelay={200}
+            />
+
+            <MetricCard
+              label="Crash Risk"
+              naiveValue={summary.naive.crash_probability}
+              optimizedValue={summary.optimized.crash_probability}
+              unit="%"
+              lowerIsBetter={true}
+              decimals={2}
+              icon={<ShieldIcon />}
+              animationDelay={300}
+            />
+
+            <MetricCard
+              label="Avg Speed"
+              naiveValue={summary.naive.average_ground_speed}
+              optimizedValue={summary.optimized.average_ground_speed}
+              unit="m/s"
+              lowerIsBetter={false}
+              decimals={1}
+              icon={<SpeedIcon />}
+              animationDelay={400}
+            />
+
+            <MetricCard
+              label="Turbulence Zones"
+              naiveValue={summary.naive.turbulence_zones_crossed}
+              optimizedValue={summary.optimized.turbulence_zones_crossed}
+              unit=""
+              lowerIsBetter={true}
+              decimals={0}
+              icon={<WindIcon />}
+              animationDelay={500}
+            />
+          </div>
+
+          {/* Additional Details (expandable) */}
+          <div style={styles.detailsSection}>
+            <div style={styles.detailRow}>
+              <span style={styles.detailLabel}>Max Turbulence</span>
+              <span style={styles.detailValues}>
+                <span style={{ color: '#ff6b6b' }}>
+                  {summary.naive.max_turbulence_encountered.toFixed(2)}
+                </span>
+                <span style={styles.detailSeparator}>vs</span>
+                <span style={{ color: '#4ecdc4' }}>
+                  {summary.optimized.max_turbulence_encountered.toFixed(2)}
+                </span>
+              </span>
+            </div>
+            <div style={styles.detailRow}>
+              <span style={styles.detailLabel}>Max Wind Speed</span>
+              <span style={styles.detailValues}>
+                <span style={{ color: '#ff6b6b' }}>
+                  {summary.naive.max_wind_speed_encountered.toFixed(1)} m/s
+                </span>
+                <span style={styles.detailSeparator}>vs</span>
+                <span style={{ color: '#4ecdc4' }}>
+                  {summary.optimized.max_wind_speed_encountered.toFixed(1)} m/s
+                </span>
+              </span>
+            </div>
+            <div style={styles.detailRow}>
+              <span style={styles.detailLabel}>Headwind Segments</span>
+              <span style={styles.detailValues}>
+                <span style={{ color: '#ff6b6b' }}>
+                  {summary.naive.headwind_segments}
+                </span>
+                <span style={styles.detailSeparator}>vs</span>
+                <span style={{ color: '#4ecdc4' }}>
+                  {summary.optimized.headwind_segments}
+                </span>
+              </span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -217,86 +326,72 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute',
     bottom: 16,
     right: 16,
-    padding: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    borderRadius: 12,
+    padding: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    borderRadius: 14,
     color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: 13,
-    minWidth: 320,
-    maxWidth: 400,
+    minWidth: 360,
+    maxWidth: 420,
     zIndex: 1000,
-    backdropFilter: 'blur(10px)',
+    backdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+    overflow: 'hidden',
   },
   header: {
-    marginBottom: 16,
-    textAlign: 'center',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 18px',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    cursor: 'pointer',
+    background: 'linear-gradient(180deg, rgba(78, 205, 196, 0.1) 0%, transparent 100%)',
+  },
+  headerContent: {
+    flex: 1,
   },
   title: {
     margin: 0,
-    fontSize: 18,
-    fontWeight: 600,
+    fontSize: 16,
+    fontWeight: 700,
     color: '#fff',
+    letterSpacing: '-0.3px',
   },
   subtitle: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#888',
-  },
-  metricsGrid: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: 12,
-  },
-  metricCard: {
-    padding: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 8,
-  },
-  metricLabel: {
+    marginTop: 2,
     fontSize: 11,
     color: '#888',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
   },
-  metricValues: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  metricColumn: {
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  routeLabel: {
-    fontSize: 9,
-    color: '#666',
-    textTransform: 'uppercase',
-  },
-  metricValue: {
-    fontSize: 14,
+  minimizeButton: {
+    width: 24,
+    height: 24,
+    border: 'none',
+    borderRadius: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    color: '#888',
+    cursor: 'pointer',
+    fontSize: 16,
     fontWeight: 600,
-    fontFamily: 'monospace',
-  },
-  improvement: {
-    marginTop: 6,
-    fontSize: 10,
-    textAlign: 'center',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryBox: {
-    marginTop: 16,
-    padding: 12,
-    backgroundColor: 'rgba(78, 205, 196, 0.15)',
-    borderRadius: 8,
-    border: '1px solid rgba(78, 205, 196, 0.3)',
+    margin: '16px 16px 12px 16px',
+    padding: 14,
+    backgroundColor: 'rgba(78, 205, 196, 0.12)',
+    borderRadius: 10,
+    border: '1px solid rgba(78, 205, 196, 0.25)',
   },
   summaryTitle: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#4ecdc4',
     textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-    marginBottom: 8,
+    letterSpacing: '1px',
+    fontWeight: 600,
+    marginBottom: 12,
     textAlign: 'center',
   },
   summaryStats: {
@@ -309,13 +404,47 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   summaryValue: {
-    fontSize: 20,
-    fontWeight: 700,
+    fontSize: 24,
+    fontWeight: 800,
     color: '#6bcb77',
+    letterSpacing: '-0.5px',
   },
   summaryLabel: {
     fontSize: 10,
     color: '#888',
     marginTop: 2,
+  },
+  metricsGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 10,
+    padding: '0 16px 16px 16px',
+  },
+  detailsSection: {
+    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+    padding: '12px 16px 16px 16px',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+  },
+  detailRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '6px 0',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+  },
+  detailLabel: {
+    fontSize: 11,
+    color: '#666',
+  },
+  detailValues: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+  detailSeparator: {
+    color: '#444',
+    fontSize: 9,
   },
 };

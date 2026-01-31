@@ -6,6 +6,20 @@ import WindField from './WindField'
 import { DualPaths } from './FlightPath'
 import { DualDrones } from './Drone'
 import { useScene } from '../context/SceneContext'
+import type { VisibilityState } from './VisibilityToggles'
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface SceneProps {
+  /** Visibility settings for scene elements */
+  visibility?: VisibilityState
+}
+
+// ============================================================================
+// Sub-components
+// ============================================================================
 
 function LoadingBox() {
   return (
@@ -62,7 +76,22 @@ function CameraController() {
   return null
 }
 
-export default function Scene() {
+// ============================================================================
+// Main Component
+// ============================================================================
+
+// Default visibility if not provided
+const DEFAULT_VISIBILITY: VisibilityState = {
+  windField: true,
+  naivePath: true,
+  optimizedPath: true,
+  naiveDrone: true,
+  optimizedDrone: true,
+  terrain: true,
+  waypoints: false,
+}
+
+export default function Scene({ visibility = DEFAULT_VISIBILITY }: SceneProps) {
   const { windFieldData, paths, currentFrame, simulation } = useScene()
 
   // Debug: log when paths change
@@ -81,12 +110,16 @@ export default function Scene() {
     <>
       <Lighting />
       <CameraController />
-      <Suspense fallback={<LoadingBox />}>
-        <Terrain />
-      </Suspense>
+
+      {/* Terrain (STL model) */}
+      {visibility.terrain && (
+        <Suspense fallback={<LoadingBox />}>
+          <Terrain />
+        </Suspense>
+      )}
 
       {/* Wind field visualization */}
-      {windFieldData && (
+      {windFieldData && visibility.windField && (
         <WindField
           data={windFieldData}
           visible={true}
@@ -102,10 +135,10 @@ export default function Scene() {
         <DualPaths
           naivePath={paths.naive}
           optimizedPath={paths.optimized}
-          showNaive={true}
-          showOptimized={true}
+          showNaive={visibility.naivePath}
+          showOptimized={visibility.optimizedPath}
           lineWidth={4}
-          showWaypoints={false}
+          showWaypoints={visibility.waypoints}
         />
       )}
 
@@ -114,8 +147,8 @@ export default function Scene() {
         <DualDrones
           naiveFrame={currentFrame.naive}
           optimizedFrame={currentFrame.optimized}
-          showNaive={true}
-          showOptimized={true}
+          showNaive={visibility.naiveDrone}
+          showOptimized={visibility.optimizedDrone}
           scale={2}
           showTrail={true}
         />

@@ -1104,11 +1104,11 @@ src/
 **Goal:** Control panel to set start/end points and trigger simulation.
 
 **Tasks:**
-- [ ] Create control panel UI (outside Canvas)
-- [ ] Input fields or preset buttons for start/end positions
-- [ ] "Start Simulation" button
-- [ ] Playback controls (play/pause/speed)
-- [ ] Toggles for wind field visibility, path visibility
+- [x] Create control panel UI (outside Canvas)
+- [x] Input fields or preset buttons for start/end positions
+- [x] "Start Simulation" button
+- [x] Playback controls (play/pause/speed)
+- [x] Toggles for wind field visibility, path visibility
 - [x] Connection status indicator (ConnectionStatus.tsx)
 
 **Test:** Can click button to start simulation with chosen endpoints.
@@ -1128,11 +1128,11 @@ src/components/
 **Goal:** Show comparison metrics when simulation completes.
 
 **Tasks:**
-- [ ] Create metrics panel component
-- [ ] Display key metrics: time, energy, crash risk
-- [ ] Show improvement percentages
-- [ ] Highlight which route is better for each metric
-- [ ] Optional: animated counters
+- [x] Create metrics panel component
+- [x] Display key metrics: time, energy, crash risk
+- [x] Show improvement percentages
+- [x] Highlight which route is better for each metric
+- [x] Optional: animated counters
 
 **Test:** After simulation, see metrics comparison panel.
 

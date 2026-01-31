@@ -8,6 +8,7 @@
 import { useState, useRef, useCallback } from 'react'
 import * as THREE from 'three'
 import SimulationPanel from './SimulationPanel'
+import type { VisibilityState } from './VisibilityToggles'
 
 // ============================================================================
 // Types
@@ -18,6 +19,8 @@ export interface SplitViewProps {
   showWindField?: boolean
   /** Sync cameras between panels */
   syncCameras?: boolean
+  /** Full visibility state (optional, overrides showWindField) */
+  visibility?: Partial<VisibilityState>
 }
 
 // ============================================================================
@@ -27,6 +30,7 @@ export interface SplitViewProps {
 export default function SplitView({
   showWindField = true,
   syncCameras = true,
+  visibility,
 }: SplitViewProps) {
   // Camera sync state
   const [masterCamera, setMasterCamera] = useState<THREE.Camera | null>(null)
@@ -38,6 +42,11 @@ export default function SplitView({
     setMasterCamera(camera)
   }, [])
 
+  // Determine wind field visibility (visibility prop takes precedence)
+  const windFieldVisible = visibility?.windField ?? showWindField
+  const showTerrain = visibility?.terrain ?? true
+  const showWaypoints = visibility?.waypoints ?? false
+
   return (
     <div style={styles.container}>
       {/* Left panel - Naive route */}
@@ -46,7 +55,9 @@ export default function SplitView({
           routeType="naive"
           label="Naive Route"
           labelColor="rgba(255, 107, 107, 0.9)"
-          showWindField={showWindField}
+          showWindField={windFieldVisible}
+          showTerrain={showTerrain}
+          showWaypoints={showWaypoints}
           isControlPanel={true}
           onCameraChange={syncCameras ? handleCameraChange : undefined}
         />
@@ -61,7 +72,9 @@ export default function SplitView({
           routeType="optimized"
           label="Wind-Optimized Route"
           labelColor="rgba(78, 205, 196, 0.9)"
-          showWindField={showWindField}
+          showWindField={windFieldVisible}
+          showTerrain={showTerrain}
+          showWaypoints={showWaypoints}
           cameraRef={syncCameras ? cameraRef : undefined}
           isControlPanel={false}
         />

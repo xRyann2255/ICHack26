@@ -28,6 +28,10 @@ export interface SimulationPanelProps {
   labelColor: string
   /** Whether to show wind field */
   showWindField?: boolean
+  /** Whether to show terrain */
+  showTerrain?: boolean
+  /** Whether to show waypoints */
+  showWaypoints?: boolean
   /** Camera ref for syncing between panels */
   cameraRef?: React.MutableRefObject<THREE.Camera | null>
   /** Whether this panel controls camera sync */
@@ -74,9 +78,11 @@ function Lighting() {
 interface SceneContentProps {
   routeType: 'naive' | 'optimized'
   showWindField: boolean
+  showTerrain: boolean
+  showWaypoints: boolean
 }
 
-function SceneContent({ routeType, showWindField }: SceneContentProps) {
+function SceneContent({ routeType, showWindField, showTerrain, showWaypoints }: SceneContentProps) {
   const { windFieldData, paths, currentFrame, simulation } = useScene()
 
   // Get the appropriate path and frame for this route
@@ -91,9 +97,12 @@ function SceneContent({ routeType, showWindField }: SceneContentProps) {
     <>
       <Lighting />
 
-      <Suspense fallback={<LoadingBox />}>
-        <Terrain />
-      </Suspense>
+      {/* Terrain */}
+      {showTerrain && (
+        <Suspense fallback={<LoadingBox />}>
+          <Terrain />
+        </Suspense>
+      )}
 
       {/* Wind field visualization */}
       {showWindField && windFieldData && (
@@ -113,7 +122,7 @@ function SceneContent({ routeType, showWindField }: SceneContentProps) {
           path={path}
           color={pathColor}
           lineWidth={4}
-          showWaypoints={false}
+          showWaypoints={showWaypoints}
           dashed={routeType === 'naive'}
           dashScale={2}
         />
@@ -203,6 +212,8 @@ export default function SimulationPanel({
   label,
   labelColor,
   showWindField = true,
+  showTerrain = true,
+  showWaypoints = false,
   cameraRef,
   isControlPanel = false,
   onCameraChange,
@@ -228,7 +239,12 @@ export default function SimulationPanel({
         <color attach="background" args={['#1a1a2e']} />
         <fog attach="fog" args={['#1a1a2e', 500, 2000]} />
 
-        <SceneContent routeType={routeType} showWindField={showWindField} />
+        <SceneContent
+          routeType={routeType}
+          showWindField={showWindField}
+          showTerrain={showTerrain}
+          showWaypoints={showWaypoints}
+        />
 
         <SyncedControls
           isControlPanel={isControlPanel}
