@@ -1,0 +1,9 @@
+# Core dependencies
+numpy>=1.24.0
+
+# WebSocket server
+websockets>=12.0
+
+# Optional: VTU file loading (CFD data visualization)
+# Uncomment if you need to load .vtu files
+pyvista>=0.43.0
