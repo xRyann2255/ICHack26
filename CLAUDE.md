@@ -1080,3 +1080,519 @@ Sent when all simulations finish:
 8. **Handle `simulation_end` / `complete`:**
    - Display metrics comparison panel
    - Highlight improvements (time saved, energy saved, risk reduction)
+
+---
+
+## Frontend Implementation Plan
+
+### Tech Stack
+
+```
+React + TypeScript + Vite
+Three.js via @react-three/fiber + @react-three/drei
+```
+
+### Dependencies
+
+```bash
+npm install three @react-three/fiber @react-three/drei
+npm install -D @types/three
+```
+
+### Implementation Order
+
+Build incrementally - each step should be testable before moving to the next.
+
+---
+
+#### Step 1: Project Setup
+
+**Goal:** Basic Vite + React + TypeScript project with Three.js rendering a test cube.
+
+**Tasks:**
+- [ ] Create Vite project: `npm create vite@latest frontend -- --template react-ts`
+- [ ] Install dependencies: `three`, `@react-three/fiber`, `@react-three/drei`
+- [ ] Create basic `<Canvas>` with a rotating cube
+- [ ] Add `OrbitControls` from drei
+- [ ] Verify hot reload works
+
+**Test:** See a rotating cube you can orbit around.
+
+**Files:**
+```
+frontend/
+├── src/
+│   ├── App.tsx           # Main app with Canvas
+│   ├── components/
+│   │   └── Scene.tsx     # 3D scene content
+│   └── main.tsx
+```
+
+---
+
+#### Step 2: WebSocket Hook
+
+**Goal:** Connect to backend, receive and store scene data.
+
+**Tasks:**
+- [ ] Create `useWebSocket` hook with connection management
+- [ ] Handle message types: `scene`, `wind_field`, `full_scene`
+- [ ] Create TypeScript interfaces for all data types
+- [ ] Store scene data in React state/context
+- [ ] Add connection status indicator
+
+**Test:** Console logs show scene data received from backend.
+
+**Files:**
+```
+src/
+├── hooks/
+│   └── useWebSocket.ts   # WebSocket connection hook
+├── types/
+│   └── api.ts            # TypeScript interfaces for API messages
+└── context/
+    └── SceneContext.tsx  # Store scene data
+```
+
+**Key Interfaces:**
+```typescript
+interface SceneData {
+  bounds: { min: number[]; max: number[] };
+  buildings: Building[];
+  windFieldShape: number[];
+}
+
+interface WindFieldData {
+  resolution: number;
+  shape: number[];
+  windVectors: number[][];
+  turbulence: number[];
+}
+
+interface FrameData {
+  time: number;
+  position: number[];
+  heading: number[];
+  velocity: number[];
+  effort: number;
+  // ... etc
+}
+```
+
+---
+
+#### Step 3: Scene Setup & Buildings
+
+**Goal:** Render the scene bounds and buildings as 3D boxes.
+
+**Tasks:**
+- [ ] Create `Buildings` component that renders boxes from scene data
+- [ ] Set up camera to view entire scene (position based on bounds)
+- [ ] Add ground plane
+- [ ] Add ambient + directional lighting
+- [ ] Style buildings (color, opacity, edges)
+
+**Test:** See buildings rendered as 3D boxes matching backend data.
+
+**Files:**
+```
+src/components/
+├── Scene.tsx             # Main scene container
+├── Buildings.tsx         # Render building boxes
+├── Ground.tsx            # Ground plane
+└── Lighting.tsx          # Lights setup
+```
+
+**Code Pattern:**
+```tsx
+function Buildings({ buildings }: { buildings: Building[] }) {
+  return (
+    <>
+      {buildings.map((b) => (
+        <mesh key={b.id} position={center(b)}>
+          <boxGeometry args={size(b)} />
+          <meshStandardMaterial color="#666" />
+        </mesh>
+      ))}
+    </>
+  );
+}
+```
+
+---
+
+#### Step 4: Wind Field Visualization
+
+**Goal:** Render wind vectors as arrows or lines showing wind direction/strength.
+
+**Tasks:**
+- [ ] Create `WindField` component
+- [ ] Convert flat array indices to 3D positions
+- [ ] Render arrows using instanced meshes (for performance)
+- [ ] Color by wind speed or turbulence
+- [ ] Add toggle to show/hide wind field
+- [ ] Downsample for performance (show every Nth arrow)
+
+**Test:** See arrows throughout scene pointing in wind direction.
+
+**Files:**
+```
+src/components/
+├── WindField.tsx         # Wind visualization
+└── WindArrow.tsx         # Single arrow geometry (or use instances)
+```
+
+**Performance Tip:** Use `InstancedMesh` for thousands of arrows:
+```tsx
+function WindArrows({ windData }: Props) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const count = windData.windVectors.length;
+
+  useEffect(() => {
+    // Set position/rotation for each instance
+    windData.windVectors.forEach((wind, i) => {
+      const pos = indexToPosition(i, windData.shape, ...);
+      const matrix = new THREE.Matrix4();
+      matrix.setPosition(pos.x, pos.y, pos.z);
+      matrix.lookAt(/* wind direction */);
+      meshRef.current.setMatrixAt(i, matrix);
+    });
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  }, [windData]);
+
+  return (
+    <instancedMesh ref={meshRef} args={[null, null, count]}>
+      <coneGeometry args={[0.5, 2, 8]} />
+      <meshStandardMaterial color="cyan" />
+    </instancedMesh>
+  );
+}
+```
+
+---
+
+#### Step 5: Path Rendering
+
+**Goal:** Display naive and optimized paths as colored lines.
+
+**Tasks:**
+- [ ] Create `FlightPath` component using drei's `<Line>`
+- [ ] Render naive path (red/orange)
+- [ ] Render optimized path (green/blue)
+- [ ] Add path visibility toggles
+- [ ] Optional: animate path drawing
+
+**Test:** See two different colored paths through the scene.
+
+**Files:**
+```
+src/components/
+└── FlightPath.tsx        # Path line rendering
+```
+
+**Code Pattern:**
+```tsx
+import { Line } from '@react-three/drei';
+
+function FlightPath({ path, color }: { path: number[][], color: string }) {
+  const points = path.map(p => new THREE.Vector3(...p));
+  return (
+    <Line points={points} color={color} lineWidth={3} />
+  );
+}
+```
+
+---
+
+#### Step 6: Drone Model & Animation
+
+**Goal:** Animated drone that follows the path based on frame data.
+
+**Tasks:**
+- [ ] Create `Drone` component (simple geometry or load GLTF model)
+- [ ] Position drone from frame `position`
+- [ ] Rotate drone to match frame `heading`
+- [ ] Visualize `effort` (color, glow, particle trail)
+- [ ] Smooth interpolation between frames
+- [ ] Add propeller spin animation
+
+**Test:** Drone moves along path, rotates to show crabbing.
+
+**Files:**
+```
+src/components/
+├── Drone.tsx             # Drone mesh/model
+└── DroneTrail.tsx        # Optional: trail effect
+```
+
+**Code Pattern:**
+```tsx
+function Drone({ frame }: { frame: FrameData | null }) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  useFrame(() => {
+    if (!frame || !meshRef.current) return;
+
+    // Position
+    meshRef.current.position.set(...frame.position);
+
+    // Rotation from heading
+    const dir = new THREE.Vector3(...frame.heading);
+    meshRef.current.quaternion.setFromUnitVectors(
+      new THREE.Vector3(1, 0, 0), // Drone's forward axis
+      dir.normalize()
+    );
+  });
+
+  // Color based on effort
+  const color = frame ? lerpColor('green', 'red', frame.effort) : 'gray';
+
+  return (
+    <mesh ref={meshRef}>
+      <boxGeometry args={[2, 0.5, 2]} />
+      <meshStandardMaterial color={color} />
+    </mesh>
+  );
+}
+```
+
+---
+
+#### Step 7: Simulation State Machine
+
+**Goal:** Manage simulation lifecycle (idle → loading → paths → simulating → complete).
+
+**Tasks:**
+- [ ] Create simulation state machine / reducer
+- [ ] Handle all WebSocket message types
+- [ ] Store frames for both routes
+- [ ] Track current playback time
+- [ ] Support play/pause/restart
+
+**Test:** Can start simulation, receive frames, see state transitions.
+
+**Files:**
+```
+src/
+├── hooks/
+│   └── useSimulation.ts  # Simulation state management
+└── types/
+    └── simulation.ts     # State types
+```
+
+**State Shape:**
+```typescript
+type SimulationState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; paths: { naive: Path; optimized: Path } }
+  | { status: 'simulating'; currentFrame: { naive: Frame; optimized: Frame } }
+  | { status: 'complete'; metrics: Metrics };
+```
+
+---
+
+#### Step 8: Side-by-Side View
+
+**Goal:** Two 3D panels showing naive vs optimized simultaneously.
+
+**Tasks:**
+- [ ] Create layout with two `<Canvas>` components
+- [ ] Sync camera between panels (or allow independent control)
+- [ ] Label panels ("Naive Route" / "Wind-Optimized Route")
+- [ ] Each panel has its own drone following its route
+- [ ] Shared wind field and buildings
+
+**Test:** Two side-by-side views, each with a drone following different paths.
+
+**Files:**
+```
+src/
+├── App.tsx               # Layout with two panels
+├── components/
+│   ├── SimulationPanel.tsx   # Single 3D view
+│   └── SplitView.tsx         # Side-by-side container
+```
+
+**Layout Pattern:**
+```tsx
+function SplitView() {
+  return (
+    <div style={{ display: 'flex', width: '100%', height: '100vh' }}>
+      <div style={{ flex: 1, borderRight: '2px solid #333' }}>
+        <h3>Naive Route</h3>
+        <Canvas>
+          <SimulationScene route="naive" />
+        </Canvas>
+      </div>
+      <div style={{ flex: 1 }}>
+        <h3>Wind-Optimized Route</h3>
+        <Canvas>
+          <SimulationScene route="optimized" />
+        </Canvas>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+#### Step 9: UI Controls
+
+**Goal:** Control panel to set start/end points and trigger simulation.
+
+**Tasks:**
+- [ ] Create control panel UI (outside Canvas)
+- [ ] Input fields or preset buttons for start/end positions
+- [ ] "Start Simulation" button
+- [ ] Playback controls (play/pause/speed)
+- [ ] Toggles for wind field visibility, path visibility
+- [ ] Connection status indicator
+
+**Test:** Can click button to start simulation with chosen endpoints.
+
+**Files:**
+```
+src/components/
+├── ControlPanel.tsx      # Main control UI
+├── PlaybackControls.tsx  # Play/pause/speed
+└── VisibilityToggles.tsx # Show/hide elements
+```
+
+---
+
+#### Step 10: Metrics Display
+
+**Goal:** Show comparison metrics when simulation completes.
+
+**Tasks:**
+- [ ] Create metrics panel component
+- [ ] Display key metrics: time, energy, crash risk
+- [ ] Show improvement percentages
+- [ ] Highlight which route is better for each metric
+- [ ] Optional: animated counters
+
+**Test:** After simulation, see metrics comparison panel.
+
+**Files:**
+```
+src/components/
+├── MetricsPanel.tsx      # Metrics comparison display
+└── MetricCard.tsx        # Single metric with comparison
+```
+
+**Display Pattern:**
+```tsx
+function MetricsPanel({ naive, optimized }: MetricsProps) {
+  const timeSaved = naive.total_flight_time - optimized.total_flight_time;
+  const energySaved = naive.energy_consumption - optimized.energy_consumption;
+
+  return (
+    <div className="metrics-panel">
+      <MetricCard
+        label="Flight Time"
+        naive={`${naive.total_flight_time.toFixed(1)}s`}
+        optimized={`${optimized.total_flight_time.toFixed(1)}s`}
+        improvement={`${timeSaved.toFixed(1)}s faster`}
+      />
+      <MetricCard
+        label="Energy"
+        naive={`${naive.energy_consumption.toFixed(2)} Wh`}
+        optimized={`${optimized.energy_consumption.toFixed(2)} Wh`}
+        improvement={`${((energySaved/naive.energy_consumption)*100).toFixed(0)}% less`}
+      />
+      {/* ... more metrics */}
+    </div>
+  );
+}
+```
+
+---
+
+#### Step 11: Polish & Effects
+
+**Goal:** Visual polish for demo impact.
+
+**Tasks:**
+- [ ] Add skybox or gradient background
+- [ ] Post-processing effects (bloom for effort glow)
+- [ ] Drone trail/particle effects
+- [ ] Smooth camera transitions
+- [ ] Loading states and animations
+- [ ] Responsive layout
+- [ ] Sound effects (optional)
+
+**Files:**
+```
+src/components/
+├── Effects.tsx           # Post-processing
+├── Environment.tsx       # Skybox, fog
+└── ParticleTrail.tsx     # Drone trail effect
+```
+
+**Post-processing with drei:**
+```tsx
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
+
+function Effects() {
+  return (
+    <EffectComposer>
+      <Bloom intensity={0.5} luminanceThreshold={0.8} />
+    </EffectComposer>
+  );
+}
+```
+
+---
+
+### Verification Checklist
+
+After each step, verify:
+
+- [ ] No console errors
+- [ ] Component renders correctly
+- [ ] Data flows from WebSocket to component
+- [ ] Performance is acceptable (60 FPS target)
+- [ ] Works with backend running
+
+---
+
+### File Structure (Final)
+
+```
+frontend/
+├── src/
+│   ├── main.tsx
+│   ├── App.tsx
+│   ├── components/
+│   │   ├── Scene.tsx
+│   │   ├── Buildings.tsx
+│   │   ├── Ground.tsx
+│   │   ├── Lighting.tsx
+│   │   ├── WindField.tsx
+│   │   ├── FlightPath.tsx
+│   │   ├── Drone.tsx
+│   │   ├── DroneTrail.tsx
+│   │   ├── SimulationPanel.tsx
+│   │   ├── SplitView.tsx
+│   │   ├── ControlPanel.tsx
+│   │   ├── MetricsPanel.tsx
+│   │   ├── Effects.tsx
+│   │   └── Environment.tsx
+│   ├── hooks/
+│   │   ├── useWebSocket.ts
+│   │   └── useSimulation.ts
+│   ├── context/
+│   │   └── SceneContext.tsx
+│   ├── types/
+│   │   ├── api.ts
+│   │   └── simulation.ts
+│   └── utils/
+│       ├── windField.ts      # Index conversion helpers
+│       └── colors.ts         # Color interpolation
+├── public/
+│   └── models/
+│       └── drone.glb         # Optional drone model
+└── package.json
+```
