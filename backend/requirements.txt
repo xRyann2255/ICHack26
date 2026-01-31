@@ -1,6 +1,7 @@
 # Core dependencies
 numpy>=1.24.0
-
+scipy
+cupy-cuda12x
 # WebSocket server
 websockets>=12.0
 
