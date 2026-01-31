@@ -177,17 +177,6 @@ export default function ConnectionStatus() {
       {/* Simulation controls */}
       {isDataLoaded && (
         <div style={styles.simSection}>
-          <div style={styles.sectionTitle}>Simulation</div>
-
-          <div style={styles.coordRow}>
-            <span style={styles.coordLabel}>Start:</span>
-            <span style={styles.coordValue}>[{simStart.join(', ')}]</span>
-          </div>
-          <div style={styles.coordRow}>
-            <span style={styles.coordLabel}>End:</span>
-            <span style={styles.coordValue}>[{simEnd.join(', ')}]</span>
-          </div>
-
           <button
             style={{ ...styles.button, ...styles.primaryButton, marginTop: 8, width: '100%' }}
             onClick={handleStartSimulation}

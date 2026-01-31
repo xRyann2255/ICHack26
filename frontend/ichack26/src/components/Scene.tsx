@@ -5,6 +5,7 @@ import Terrain from './Terrain'
 import WindField from './WindField'
 import { DualPaths } from './FlightPath'
 import { DualDrones } from './Drone'
+import Effects from './Effects'
 import { useScene } from '../context/SceneContext'
 import type { VisibilityState } from './VisibilityToggles'
 
@@ -15,6 +16,8 @@ import type { VisibilityState } from './VisibilityToggles'
 export interface SceneProps {
   /** Visibility settings for scene elements */
   visibility?: VisibilityState
+  /** Enable post-processing effects */
+  enableEffects?: boolean
 }
 
 // ============================================================================
@@ -89,22 +92,14 @@ const DEFAULT_VISIBILITY: VisibilityState = {
   optimizedDrone: true,
   terrain: true,
   waypoints: false,
+  effects: true,
 }
 
-export default function Scene({ visibility = DEFAULT_VISIBILITY }: SceneProps) {
+export default function Scene({
+  visibility = DEFAULT_VISIBILITY,
+  enableEffects = true,
+}: SceneProps) {
   const { windFieldData, paths, currentFrame, simulation } = useScene()
-
-  // Debug: log when paths change
-  if (paths) {
-    console.log('[Scene] Paths received:', {
-      naive: paths.naive?.length,
-      optimized: paths.optimized?.length,
-      naiveFirst: paths.naive?.[0],
-      naiveLast: paths.naive?.[paths.naive?.length - 1],
-      optimizedFirst: paths.optimized?.[0],
-      optimizedLast: paths.optimized?.[paths.optimized?.length - 1],
-    })
-  }
 
   return (
     <>
@@ -176,6 +171,18 @@ export default function Scene({ visibility = DEFAULT_VISIBILITY }: SceneProps) {
         minPolarAngle={0}
         maxPolarAngle={Math.PI / 2.1}
       />
+
+      {/* Post-processing effects */}
+      {(enableEffects && visibility.effects) && (
+        <Effects
+          bloom={true}
+          bloomIntensity={0.6}
+          bloomThreshold={0.7}
+          vignette={true}
+          vignetteDarkness={0.3}
+          toneMapping={true}
+        />
+      )}
     </>
   )
 }
