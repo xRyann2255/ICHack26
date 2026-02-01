@@ -16,7 +16,6 @@ function App() {
 
   // UI Control States
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
-  const [showControls, setShowControls] = useState(true)
 
   return (
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
@@ -51,18 +50,6 @@ function App() {
             onClick={() => setViewMode('combined')}
           >
             Combined
-          </button>
-
-          <button
-            style={{
-              ...viewToggleStyles.button,
-              marginLeft: 8,
-              ...(showControls ? viewToggleStyles.active : {}),
-            }}
-            onClick={() => setShowControls(!showControls)}
-            title={showControls ? 'Hide Controls' : 'Show Controls'}
-          >
-            {showControls ? 'Hide UI' : 'Show UI'}
           </button>
         </div>
 

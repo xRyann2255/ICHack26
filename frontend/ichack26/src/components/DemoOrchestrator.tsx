@@ -189,19 +189,6 @@ export default function DemoOrchestrator({
   return (
     <div style={styles.container}>
       {renderPhase()}
-
-      {/* Phase indicator (development) */}
-      {import.meta.env.DEV && (
-        <div style={styles.phaseIndicator}>
-          <span>Phase: {phase}</span>
-          <div style={styles.phaseButtons}>
-            <button onClick={() => skipToPhase('route_creation_naive')}>R1</button>
-            <button onClick={() => skipToPhase('route_creation_optimized')}>R2</button>
-            <button onClick={() => skipToPhase('transition')}>T</button>
-            <button onClick={() => skipToPhase('drone_flight')}>F</button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
