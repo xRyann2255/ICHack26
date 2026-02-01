@@ -279,8 +279,8 @@ export default function ControlPanel() {
             {simulation.status === 'loading'
               ? 'Loading...'
               : simulation.status === 'simulating'
-              ? 'Simulating...'
-              : 'Start Simulation'}
+                ? 'Simulating...'
+                : 'Start Simulation'}
           </button>
 
           {/* Status indicator */}
@@ -306,40 +306,39 @@ export default function ControlPanel() {
 
 const styles: Record<string, React.CSSProperties | ((status: string) => React.CSSProperties)> = {
   container: {
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    borderRadius: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderRadius: 8,
     color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: 13,
+    fontSize: 12,
     zIndex: 1000,
-    backdropFilter: 'blur(10px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(5px)',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '12px 16px',
+    padding: 12,
     cursor: 'pointer',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    borderBottom: '1px solid #333',
   },
   title: {
     fontWeight: 600,
     fontSize: 14,
-    color: '#4ecdc4',
+    color: '#fff',
   },
   collapseIcon: {
     fontSize: 10,
     color: '#888',
   },
   content: {
-    padding: 16,
+    padding: 12,
     maxHeight: 'calc(100vh - 100px)',
     overflowY: 'auto',
     overflowX: 'hidden',
   },
   section: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontSize: 11,
@@ -347,7 +346,7 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
     color: '#888',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   presetGrid: {
     display: 'grid',
@@ -355,10 +354,10 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
     gap: 6,
   },
   presetButton: {
-    padding: '8px 10px',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
+    padding: '6px 8px',
+    border: 'none',
     borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#ccc',
     cursor: 'pointer',
     fontSize: 11,
@@ -366,7 +365,7 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
   },
   positionInputs: {
     display: 'flex',
-    gap: 8,
+    gap: 6,
   },
   inputGroup: {
     flex: 1,
@@ -376,12 +375,12 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
   },
   inputLabel: {
     fontSize: 10,
-    color: '#666',
+    color: '#888',
     fontWeight: 500,
   },
   input: {
     padding: '6px 8px',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
+    border: 'none',
     borderRadius: 4,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     color: '#fff',
@@ -396,10 +395,10 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
   },
   routeTypeButton: {
     flex: 1,
-    padding: '8px 12px',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
+    padding: '6px 10px',
+    border: 'none',
     borderRadius: 6,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#888',
     cursor: 'pointer',
     fontSize: 11,
@@ -408,33 +407,32 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
   },
   routeTypeButtonActive: {
     backgroundColor: '#4a9eff',
-    borderColor: '#4a9eff',
     color: '#fff',
   },
   startButton: {
     width: '100%',
-    padding: '12px 16px',
+    padding: '10px 12px',
     border: 'none',
     borderRadius: 8,
     backgroundColor: '#4ecdc4',
     color: '#000',
     cursor: 'pointer',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
     transition: 'all 0.2s',
     marginTop: 8,
   },
   startButtonDisabled: {
     backgroundColor: '#333',
-    color: '#666',
+    color: '#888',
     cursor: 'not-allowed',
   },
   statusIndicator: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginTop: 12,
-    padding: '8px 12px',
+    marginTop: 8,
+    padding: '6px 8px',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 6,
   },
@@ -446,10 +444,10 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
       status === 'complete'
         ? '#6bcb77'
         : status === 'simulating'
-        ? '#ffd93d'
-        : status === 'paths_received'
-        ? '#4a9eff'
-        : '#888',
+          ? '#ffd93d'
+          : status === 'paths_received'
+            ? '#4a9eff'
+            : '#888',
   }),
   statusText: {
     fontSize: 12,

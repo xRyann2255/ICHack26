@@ -178,8 +178,8 @@ class WebSocketServer:
             resolution=self.config.wind_resolution,
             center_offset=stl_center_offset
         )
-        # Take every 10 points from the main wind field (N, 3)
-        N = 10
+        # Take every 10 points from the main wind field (X, 3)
+        N = 25
         mini_points = self.wind_field.points[::N]
         mini_velocities = self.wind_field.velocities[::N]
         self.mini_wind_field = WindField(mini_points, mini_velocities)
