@@ -103,7 +103,7 @@ export default function HomePage({ onPlanRoute, imageUrl }: HomePageProps) {
             {/* Scanning effect */}
             <div style={styles.scanEffect} />
             <span style={styles.logoText}>
-              {'TRACR'.split('').map((letter, index) => (
+              {'UPDRAFT'.split('').map((letter, index) => (
                 <span key={index} className="logo-letter" style={styles.logoLetter}>
                   {letter}
                 </span>
