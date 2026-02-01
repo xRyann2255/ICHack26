@@ -551,10 +551,12 @@ class WebSocketServer:
         states = {}
         frames = {}
         completed = {}
+        completion_times = {}  # Track when each route finishes
 
         for name, path in [(name1, path1), (name2, path2)]:
             if len(path) < 2:
                 completed[name] = True
+                completion_times[name] = 0.0
                 frames[name] = []
                 continue
 
@@ -569,6 +571,7 @@ class WebSocketServer:
                 'path': path
             }
             completed[name] = False
+            completion_times[name] = 0.0
             frames[name] = []
 
         time = 0.0
@@ -593,6 +596,9 @@ class WebSocketServer:
                 path = data['path']
 
                 if state.target_waypoint_index >= len(path):
+                    if not completed[name]:  # Only record time on first completion
+                        completion_times[name] = time
+                        logger.info(f"Route {name} completed at t={time:.2f}s")
                     completed[name] = True
                     continue
 
@@ -612,6 +618,9 @@ class WebSocketServer:
                     distance_to_target = to_target.magnitude()
 
                 if state.target_waypoint_index >= len(path):
+                    if not completed[name]:  # Only record time on first completion
+                        completion_times[name] = time
+                        logger.info(f"Route {name} completed at t={time:.2f}s")
                     completed[name] = True
                     continue
 
@@ -718,6 +727,8 @@ class WebSocketServer:
         results = {}
         for name in [name1, name2]:
             route_frames = frames[name]
+            # Use individual completion time, not global simulation time
+            route_time = completion_times.get(name, time)
             if route_frames:
                 total_distance = sum(
                     (route_frames[i+1].position - route_frames[i].position).magnitude()
@@ -725,9 +736,9 @@ class WebSocketServer:
                 )
                 results[name] = FlightData(
                     frames=route_frames,
-                    total_time=time,
+                    total_time=route_time,
                     total_distance=total_distance,
-                    average_groundspeed=total_distance / max(0.1, time),
+                    average_groundspeed=total_distance / max(0.1, route_time),
                     average_effort=sum(f.effort for f in route_frames) / max(1, len(route_frames)),
                     max_effort=max((f.effort for f in route_frames), default=0),
                     completed=completed[name],
@@ -745,7 +756,7 @@ class WebSocketServer:
                     waypoints_reached=0
                 )
 
-        logger.info(f"Parallel simulation complete: {step} steps, {time:.1f}s")
+        logger.info(f"Parallel simulation complete: {step} steps, total_time={time:.1f}s, naive={completion_times.get(name1, 0):.1f}s, optimized={completion_times.get(name2, 0):.1f}s")
         return results
 
     async def stream_simulation(
