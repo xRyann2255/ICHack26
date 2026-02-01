@@ -33,21 +33,25 @@ export interface WindFieldProps {
 // Color Utilities
 // ============================================================================
 
+// Reusable color object to avoid allocations
+const _tempColor = new THREE.Color()
+
 /**
  * Get heatmap color from blue (low) to red (high)
- * Smooth gradient through the spectrum
+ * Writes to the provided output array to avoid allocations
  */
-function velocityToColor(normalizedVelocity: number): THREE.Color {
+function velocityToColorRGB(normalizedVelocity: number, out: Float32Array, offset: number): void {
   const t = Math.max(0, Math.min(1, normalizedVelocity))
-  const color = new THREE.Color()
 
   // HSL interpolation: Blue (0.66) -> Cyan -> Green -> Yellow -> Red (0.0)
   const hue = 0.66 * (1 - t)
   const saturation = 0.9
   const lightness = 0.55
 
-  color.setHSL(hue, saturation, lightness)
-  return color
+  _tempColor.setHSL(hue, saturation, lightness)
+  out[offset] = _tempColor.r
+  out[offset + 1] = _tempColor.g
+  out[offset + 2] = _tempColor.b
 }
 
 // ============================================================================
@@ -65,37 +69,34 @@ export default function WindField({
 }: WindFieldProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
-  // Process wind data and create 2 matrices
-  const { count, matrices, colors } = useMemo(() => {
+  // Process wind data and create matrices + colors
+  const { count, matrices, colors, boundingSphere } = useMemo(() => {
     const { points, velocity } = data
 
     // Validate data
     if (!points || !velocity || points.length === 0 || velocity.length === 0) {
-      console.warn('WindField: No wind data available')
-      return { count: 0, matrices: new Float32Array(0), colors: new Float32Array(0) }
+      return { count: 0, matrices: new Float32Array(0), colors: new Float32Array(0), boundingSphere: null }
     }
 
     if (points.length !== velocity.length) {
       console.error('WindField: Points and velocity arrays must have same length')
-      return { count: 0, matrices: new Float32Array(0), colors: new Float32Array(0) }
+      return { count: 0, matrices: new Float32Array(0), colors: new Float32Array(0), boundingSphere: null }
     }
 
     const numArrows = points.length
 
-    // Calculate max velocity for normalization
+    // Calculate max velocity for normalization and bounds for bounding sphere
     let maxVelocity = 0
-    for (const vel of velocity) {
-      const [vx, vy, vz] = vel
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz)
-      if (speed > maxVelocity) maxVelocity = speed
-    }
-    maxVelocity = maxVelocity || 1
-
-    // Debug: Calculate and log wind field bounds
     let minX = Infinity, maxX = -Infinity
     let minY = Infinity, maxY = -Infinity
     let minZ = Infinity, maxZ = -Infinity
-    for (const [px, py, pz] of points) {
+
+    for (let i = 0; i < numArrows; i++) {
+      const [vx, vy, vz] = velocity[i]
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz)
+      if (speed > maxVelocity) maxVelocity = speed
+
+      const [px, py, pz] = points[i]
       if (px < minX) minX = px
       if (px > maxX) maxX = px
       if (py < minY) minY = py
@@ -103,25 +104,27 @@ export default function WindField({
       if (pz < minZ) minZ = pz
       if (pz > maxZ) maxZ = pz
     }
-    console.log(`WindField: Rendering ${numArrows} arrows (max velocity: ${maxVelocity.toFixed(2)} m/s)`)
-    console.log('WindField bounds:', {
-      x: [minX.toFixed(1), maxX.toFixed(1)],
-      y: [minY.toFixed(1), maxY.toFixed(1)],
-      z: [minZ.toFixed(1), maxZ.toFixed(1)]
-    })
-    console.log('WindField center:', {
-      x: ((minX + maxX) / 2).toFixed(1),
-      y: ((minY + maxY) / 2).toFixed(1),
-      z: ((minZ + maxZ) / 2).toFixed(1)
-    })
+    maxVelocity = maxVelocity || 1
+
+    // Compute bounding sphere for frustum culling
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
+    const centerZ = (minZ + maxZ) / 2
+    const radius = Math.sqrt(
+      Math.pow(maxX - minX, 2) + Math.pow(maxY - minY, 2) + Math.pow(maxZ - minZ, 2)
+    ) / 2 + arrowSize * maxScale * 2 // Add padding for arrow size
+
+    const sphere = new THREE.Sphere(new THREE.Vector3(centerX, centerY, centerZ), radius)
 
     // Prepare instance data
     const matricesArray = new Float32Array(numArrows * 16)
     const colorsArray = new Float32Array(numArrows * 3)
 
+    // Reusable objects to avoid allocations in loop
     const tempMatrix = new THREE.Matrix4()
     const tempQuaternion = new THREE.Quaternion()
     const tempScale = new THREE.Vector3()
+    const tempPosition = new THREE.Vector3()
     const upVector = new THREE.Vector3(0, 1, 0)
     const direction = new THREE.Vector3()
 
@@ -135,9 +138,11 @@ export default function WindField({
 
       // Skip arrows with near-zero velocity
       if (speed < 0.001) {
-        // Set invisible by scaling to zero
-        tempMatrix.makeScale(0, 0, 0)
-        tempMatrix.toArray(matricesArray, i * 16)
+        // Set invisible by scaling to zero - write identity-like matrix with zero scale
+        matricesArray[i * 16] = 0      // scale x
+        matricesArray[i * 16 + 5] = 0  // scale y
+        matricesArray[i * 16 + 10] = 0 // scale z
+        matricesArray[i * 16 + 15] = 1 // w
         colorsArray[i * 3] = 0
         colorsArray[i * 3 + 1] = 0
         colorsArray[i * 3 + 2] = 0
@@ -160,23 +165,17 @@ export default function WindField({
         scale = arrowSize * (minScale + normalizedSpeed * (maxScale - minScale))
       }
       tempScale.set(scale, scale * 1.5, scale)
+      tempPosition.set(px, py, pz)
 
-      // Compose transformation matrix
-      tempMatrix.compose(
-        new THREE.Vector3(px, py, pz),
-        tempQuaternion,
-        tempScale
-      )
+      // Compose transformation matrix (reusing tempPosition instead of new Vector3)
+      tempMatrix.compose(tempPosition, tempQuaternion, tempScale)
       tempMatrix.toArray(matricesArray, i * 16)
 
-      // Set color based on velocity magnitude
-      const color = velocityToColor(normalizedSpeed)
-      colorsArray[i * 3] = color.r
-      colorsArray[i * 3 + 1] = color.g
-      colorsArray[i * 3 + 2] = color.b
+      // Set color based on velocity magnitude (writes directly to array)
+      velocityToColorRGB(normalizedSpeed, colorsArray, i * 3)
     }
 
-    return { count: numArrows, matrices: matricesArray, colors: colorsArray }
+    return { count: numArrows, matrices: matricesArray, colors: colorsArray, boundingSphere: sphere }
   }, [data, arrowSize, scaleByVelocity, minScale, maxScale])
 
   // Create cone geometry for arrows (pointing up in local space)
@@ -186,24 +185,29 @@ export default function WindField({
     return geo
   }, [])
 
-  // Apply matrices and colors to instanced mesh
+  // Apply matrices and colors to instanced mesh via direct buffer copy
   useEffect(() => {
     if (!meshRef.current || count === 0) return
 
     const mesh = meshRef.current
-    const tempMatrix = new THREE.Matrix4()
 
-    // Set all instance matrices
-    for (let i = 0; i < count; i++) {
-      tempMatrix.fromArray(matrices, i * 16)
-      mesh.setMatrixAt(i, tempMatrix)
-    }
+    // Direct buffer copy - O(1) instead of O(n) iterations
+    ;(mesh.instanceMatrix.array as Float32Array).set(matrices)
     mesh.instanceMatrix.needsUpdate = true
 
-    // Set all instance colors
-    const colorAttr = new THREE.InstancedBufferAttribute(colors, 3)
-    mesh.instanceColor = colorAttr
-  }, [count, matrices, colors])
+    // Reuse existing color attribute or create new one
+    if (mesh.instanceColor && mesh.instanceColor.count === count) {
+      ;(mesh.instanceColor.array as Float32Array).set(colors)
+      mesh.instanceColor.needsUpdate = true
+    } else {
+      mesh.instanceColor = new THREE.InstancedBufferAttribute(colors, 3)
+    }
+
+    // Set bounding sphere for proper frustum culling
+    if (boundingSphere) {
+      mesh.geometry.boundingSphere = boundingSphere
+    }
+  }, [count, matrices, colors, boundingSphere])
 
   if (!visible || count === 0) return null
 
@@ -212,7 +216,7 @@ export default function WindField({
       <instancedMesh
         ref={meshRef}
         args={[coneGeometry, undefined, count]}
-        frustumCulled={false}
+        frustumCulled={true}
       >
         <meshBasicMaterial
           vertexColors={true}

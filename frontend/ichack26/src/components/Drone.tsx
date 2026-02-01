@@ -392,6 +392,7 @@ function FadingMotionTrail({
 }: FadingTrailProps) {
   const pointsRef = useRef<{ position: THREE.Vector3; time: number }[]>([])
   const lastAddTimeRef = useRef(0)
+  const lastPositionRef = useRef<THREE.Vector3 | null>(null)
   const lineRef = useRef<THREE.Line>(null)
 
   // Pre-allocate geometry and material
@@ -419,6 +420,12 @@ function FadingMotionTrail({
 
     const now = state.clock.elapsedTime
     const points = pointsRef.current
+
+    // Detect large position jump (new simulation) - clear trail
+    if (lastPositionRef.current && position.distanceTo(lastPositionRef.current) > 50) {
+      pointsRef.current = []
+    }
+    lastPositionRef.current = position.clone()
 
     // Add new point (throttled)
     if (now - lastAddTimeRef.current > 0.02) {
@@ -492,6 +499,8 @@ export default function Drone({
   const targetPositionRef = useRef(new THREE.Vector3())
   const targetQuaternionRef = useRef(new THREE.Quaternion())
   const currentPositionRef = useRef(new THREE.Vector3())
+  const isInitializedRef = useRef(false)
+  const lastFrameTimeRef = useRef<number | null>(null)
 
   // Calculate color based on effort
   const droneColor = useMemo(() => {
@@ -512,6 +521,22 @@ export default function Drone({
 
     // Update target position
     targetPositionRef.current.set(frame.position[0], frame.position[1], frame.position[2])
+
+    // Initialize currentPositionRef on first frame or if position jumped too far (new simulation)
+    const distanceToTarget = currentPositionRef.current.distanceTo(targetPositionRef.current)
+    if (!isInitializedRef.current || distanceToTarget > 100) {
+      // Snap to target position immediately on first frame or large jumps
+      currentPositionRef.current.copy(targetPositionRef.current)
+      isInitializedRef.current = true
+      lastFrameTimeRef.current = frame.time
+    }
+
+    // Detect if frame time went backwards (new simulation started)
+    if (lastFrameTimeRef.current !== null && frame.time < lastFrameTimeRef.current - 0.5) {
+      // New simulation - snap to new position
+      currentPositionRef.current.copy(targetPositionRef.current)
+    }
+    lastFrameTimeRef.current = frame.time
 
     // Calculate target rotation from heading - Y-axis rotation only (yaw)
     // Project heading onto XZ plane to keep drone upright
