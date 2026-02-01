@@ -38,6 +38,10 @@ export interface DemoOrchestratorProps {
   visibility?: Partial<VisibilityState>
   /** Callback when simulation starts (drone flight begins) */
   onSimulationStart?: () => void
+  /** Callback when cinematic is complete */
+  onCinematicComplete?: () => void
+  /** Trigger to replay the cinematic */
+  replayTrigger?: number
 }
 
 // ============================================================================
@@ -50,15 +54,49 @@ export default function DemoOrchestrator({
   transitionDuration = 2500,
   visibility,
   onSimulationStart,
+  onCinematicComplete,
+  replayTrigger,
 }: DemoOrchestratorProps) {
-  const { simulation, paths, routePlanningMode, enterPlanningMode, exitPlanningMode } = useScene()
+  const { simulation, paths, routePlanningMode, enterPlanningMode, exitPlanningMode, resetSimulation, setPlaybackPaused, startSimulation } = useScene()
 
   // Demo state
   const [phase, setPhase] = useState<DemoPhase>('idle')
   const [routeProgress, setRouteProgress] = useState(0)
+  const [lastReplayTrigger, setLastReplayTrigger] = useState(0)
 
   // Wind field visibility
   const showWindField = visibility?.windField ?? true
+
+  // Handle replay - restart simulation immediately
+  useEffect(() => {
+    console.log('[DemoOrchestrator] Replay effect triggered:', { replayTrigger, phase, lastReplayTrigger })
+    // Only trigger if replayTrigger has actually changed
+    if (replayTrigger && replayTrigger > 0 && replayTrigger !== lastReplayTrigger && (phase === 'complete' || phase === 'drone_flight')) {
+      console.log('[DemoOrchestrator] Replaying simulation')
+      setLastReplayTrigger(replayTrigger)
+
+      // Get start and end points from the existing paths
+      if (paths && (paths.naive || paths.optimized)) {
+        const pathToUse = paths.optimized || paths.naive
+        if (pathToUse && pathToUse.length >= 2) {
+          const start = pathToUse[0]
+          const end = pathToUse[pathToUse.length - 1]
+
+          console.log('[DemoOrchestrator] Restarting simulation with:', { start, end })
+
+          // Reset local state
+          resetSimulation()
+          setPlaybackPaused(false)
+
+          // Restart the simulation from the backend
+          startSimulation(start, end, 'both')
+
+          // Set phase to drone_flight (it will transition automatically when data arrives)
+          setPhase('drone_flight')
+        }
+      }
+    }
+  }, [replayTrigger, phase, lastReplayTrigger, paths, resetSimulation, setPlaybackPaused, startSimulation])
 
   // Handle entering planning mode
   const handlePlanRoute = () => {
@@ -191,8 +229,12 @@ export default function DemoOrchestrator({
   useEffect(() => {
     if (phase === 'drone_flight' && simulation.status === 'complete') {
       setPhase('complete')
+      // Notify parent that cinematic is complete
+      if (onCinematicComplete) {
+        onCinematicComplete()
+      }
     }
-  }, [phase, simulation.status])
+  }, [phase, simulation.status, onCinematicComplete])
 
   // Render based on phase
   const renderPhase = () => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Wind } from 'lucide-react'
+import { Wind, RotateCcw } from 'lucide-react'
 import Scene from './components/Scene'
 import SplitView from './components/SplitView'
 import DemoOrchestrator from './components/DemoOrchestrator'
@@ -101,10 +101,22 @@ function SceneLoader({ onSceneReady }: SceneLoaderProps) {
 function AppContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('cinematic')
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
+  const [cinematicComplete, setCinematicComplete] = useState(false)
+  const [replayTrigger, setReplayTrigger] = useState(0)
   const { routePlanningMode } = useScene()
 
   // Hide controls when in planning mode
   const showControls = routePlanningMode === 'idle'
+
+  const handleReplayCinematic = () => {
+    console.log('[App] Replay button clicked, triggering replay', {
+      cinematicComplete,
+      replayTrigger,
+      viewMode
+    })
+    setReplayTrigger(prev => prev + 1)
+    // Don't reset cinematicComplete - let it stay enabled
+  }
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }}>
@@ -211,6 +223,48 @@ function AppContent() {
         </button>
       )}
 
+      {/* Replay Cinematic Button - Below Wind Toggle */}
+      {showControls && viewMode === 'cinematic' && (
+        <button
+          style={{
+            position: 'absolute',
+            top: '118px',
+            right: '16px',
+            padding: '10px',
+            background: cinematicComplete ? 'rgba(78, 205, 196, 0.9)' : 'rgba(0, 0, 0, 0.4)',
+            border: 'none',
+            borderRadius: '8px',
+            color: cinematicComplete ? '#fff' : '#666',
+            cursor: cinematicComplete ? 'pointer' : 'not-allowed',
+            zIndex: 1000,
+            transition: 'all 0.2s ease',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: cinematicComplete ? 1 : 0.5,
+          }}
+          onMouseEnter={(e) => {
+            if (cinematicComplete) {
+              e.currentTarget.style.transform = 'scale(1.05)'
+              e.currentTarget.style.background = 'rgba(78, 205, 196, 1)'
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (cinematicComplete) {
+              e.currentTarget.style.transform = 'scale(1)'
+              e.currentTarget.style.background = 'rgba(78, 205, 196, 0.9)'
+            }
+          }}
+          onClick={cinematicComplete ? handleReplayCinematic : undefined}
+          title={cinematicComplete ? 'Replay Cinematic' : 'Cinematic not complete'}
+          disabled={!cinematicComplete}
+        >
+          <RotateCcw size={20} />
+        </button>
+      )}
+
       {/* 3D View based on mode */}
       {viewMode === 'cinematic' ? (
         <DemoOrchestrator
@@ -218,6 +272,8 @@ function AppContent() {
           routeCreationSpeed={0.02}
           transitionDuration={2000}
           visibility={visibility}
+          onCinematicComplete={() => setCinematicComplete(true)}
+          replayTrigger={replayTrigger}
         />
       ) : viewMode === 'split' ? (
         <>
