@@ -11,6 +11,7 @@ import DroneFlightView from './DroneFlightView'
 import TransitionOverlay from './TransitionOverlay'
 import RoutePlanningView from './RoutePlanningView'
 import MetricsPanel from './MetricsPanel'
+import SimulationClock from './SimulationClock'
 import { useScene } from '../context/SceneContext'
 import type { VisibilityState } from './VisibilityToggles'
 
@@ -294,13 +295,23 @@ export default function DemoOrchestrator({
         )
 
       case 'drone_flight':
-        return <DroneFlightView showWindField={showWindField} />
+        return (
+          <>
+            <DroneFlightView showWindField={showWindField} />
+            <SimulationClock
+              simulationTime={simulation.currentFrame.optimized?.time || simulation.currentFrame.naive?.time || 0}
+            />
+          </>
+        )
 
       case 'complete':
         return (
           <>
             <DroneFlightView showWindField={showWindField} />
             <MetricsPanel />
+            <SimulationClock
+              simulationTime={simulation.currentFrame.optimized?.time || simulation.currentFrame.naive?.time || 0}
+            />
             <div style={styles.completeOverlay}>
               <button style={styles.newRouteButton} onClick={handlePlanNewRoute}>
                 Plan New Route

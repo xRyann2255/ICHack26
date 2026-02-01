@@ -45,9 +45,8 @@ const _tempColor = new THREE.Color()
 // Color gradient stops for kinetic energy visualization
 const KE_COLOR_GRADIENT = [
   { value: 0.0, color: new THREE.Color(0x0000ff) },  // Blue - Low energy
-  { value: 0.25, color: new THREE.Color(0x00ffff) }, // Cyan
-  { value: 0.5, color: new THREE.Color(0x00ff00) },  // Green
-  { value: 0.75, color: new THREE.Color(0xffff00) }, // Yellow
+  { value: 0.6, color: new THREE.Color(0x0000ff) },  // Green
+  { value: 0.8, color: new THREE.Color(0x00ff00) },  // Yellow
   { value: 1.0, color: new THREE.Color(0xff0000) },  // Red - High energy
 ] as const
 

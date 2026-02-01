@@ -115,7 +115,8 @@ function AppContent() {
       viewMode
     })
     setReplayTrigger(prev => prev + 1)
-    // Don't reset cinematicComplete - let it stay enabled
+    // Reset cinematicComplete to disable button during replay
+    setCinematicComplete(false)
   }
 
   return (
