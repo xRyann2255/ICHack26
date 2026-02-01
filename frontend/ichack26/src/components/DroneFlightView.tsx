@@ -120,7 +120,7 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
         heading={frame?.heading || null}
         followDistance={50}
         followHeight={25}
-        smoothing={0.06}
+        smoothing={1.0}
         active={true}
       />
 

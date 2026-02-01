@@ -43,12 +43,6 @@ interface CollapsibleSidebarProps {
 
 const DEFAULT_PRESETS: RoutePreset[] = [
   {
-    name: 'Cross City',
-    description: 'Diagonal path across the scene',
-    start: { x: 170, y: 50, z: 170 },
-    end: { x: 30, y: 50, z: 30 },
-  },
-  {
     name: 'East-West',
     description: 'Horizontal path through center',
     start: { x: 170, y: 50, z: 100 },
@@ -59,6 +53,12 @@ const DEFAULT_PRESETS: RoutePreset[] = [
     description: 'Vertical path through center',
     start: { x: 100, y: 50, z: 170 },
     end: { x: 100, y: 50, z: 30 },
+  },
+  {
+    name: 'Cross City',
+    description: 'Diagonal path across the scene',
+    start: { x: 170, y: 50, z: 170 },
+    end: { x: 30, y: 50, z: 30 },
   },
 ];
 
@@ -168,9 +168,9 @@ export default function CollapsibleSidebar({
     }
   }, [onWindDirectionChange]);
 
-  // Control Panel state
-  const [startPos, setStartPos] = useState<Position>({ x: 170, y: 50, z: 170 });
-  const [endPos, setEndPos] = useState<Position>({ x: 30, y: 50, z: 30 });
+  // Control Panel state - start at east edge, end at west edge (avoid corners)
+  const [startPos, setStartPos] = useState<Position>({ x: 170, y: 50, z: 100 });
+  const [endPos, setEndPos] = useState<Position>({ x: 30, y: 50, z: 100 });
   const [routeType, _setRouteType] = useState<RouteType>('both');
   void _setRouteType; // Reserved for future use
 
@@ -183,12 +183,6 @@ export default function CollapsibleSidebar({
       const marginZ = Math.min(size[2] * 0.12, 55);
       return [
         {
-          name: 'Cross City',
-          description: 'Diagonal path',
-          start: { x: max[0] - marginX, y: flyAltitude, z: max[2] - marginZ },
-          end: { x: min[0] + marginX, y: flyAltitude, z: min[2] + marginZ },
-        },
-        {
           name: 'East-West',
           description: 'Horizontal path',
           start: { x: max[0] - marginX, y: flyAltitude, z: center[2] },
@@ -199,6 +193,12 @@ export default function CollapsibleSidebar({
           description: 'Vertical path',
           start: { x: center[0], y: flyAltitude, z: max[2] - marginZ },
           end: { x: center[0], y: flyAltitude, z: min[2] + marginZ },
+        },
+        {
+          name: 'Cross City',
+          description: 'Diagonal path',
+          start: { x: max[0] - marginX, y: flyAltitude, z: max[2] - marginZ },
+          end: { x: min[0] + marginX, y: flyAltitude, z: min[2] + marginZ },
         },
       ];
     })()

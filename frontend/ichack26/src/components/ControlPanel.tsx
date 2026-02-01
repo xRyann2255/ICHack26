@@ -33,12 +33,6 @@ interface RoutePreset {
 
 const DEFAULT_PRESETS: RoutePreset[] = [
   {
-    name: 'Cross City',
-    description: 'Diagonal path across the scene',
-    start: { x: 170, y: 50, z: 170 },
-    end: { x: 30, y: 50, z: 30 },
-  },
-  {
     name: 'East-West',
     description: 'Horizontal path through center',
     start: { x: 170, y: 50, z: 100 },
@@ -51,10 +45,16 @@ const DEFAULT_PRESETS: RoutePreset[] = [
     end: { x: 100, y: 50, z: 30 },
   },
   {
+    name: 'Cross City',
+    description: 'Diagonal path across the scene',
+    start: { x: 170, y: 50, z: 170 },
+    end: { x: 30, y: 50, z: 30 },
+  },
+  {
     name: 'Low Altitude',
     description: 'Low flight path',
-    start: { x: 170, y: 30, z: 170 },
-    end: { x: 30, y: 30, z: 30 },
+    start: { x: 170, y: 30, z: 100 },
+    end: { x: 30, y: 30, z: 100 },
   },
 ];
 
@@ -71,9 +71,9 @@ export default function ControlPanel() {
     connectionStatus,
   } = useScene();
 
-  // Position state
-  const [startPos, setStartPos] = useState<Position>({ x: 170, y: 50, z: 170 });
-  const [endPos, setEndPos] = useState<Position>({ x: 30, y: 50, z: 30 });
+  // Position state - start at east edge, end at west edge (avoid corners)
+  const [startPos, setStartPos] = useState<Position>({ x: 170, y: 50, z: 100 });
+  const [endPos, setEndPos] = useState<Position>({ x: 30, y: 50, z: 100 });
   const [routeType, setRouteType] = useState<RouteType>('both');
   const [isExpanded, setIsExpanded] = useState(true);
 
@@ -88,12 +88,6 @@ export default function ControlPanel() {
 
     return [
       {
-        name: 'Cross City',
-        description: 'Diagonal path across the scene',
-        start: { x: max[0] - marginX, y: flyAltitude, z: max[2] - marginZ },
-        end: { x: min[0] + marginX, y: flyAltitude, z: min[2] + marginZ },
-      },
-      {
         name: 'East-West',
         description: 'Horizontal path through center',
         start: { x: max[0] - marginX, y: flyAltitude, z: center[2] },
@@ -106,16 +100,22 @@ export default function ControlPanel() {
         end: { x: center[0], y: flyAltitude, z: min[2] + marginZ },
       },
       {
+        name: 'Cross City',
+        description: 'Diagonal path across the scene',
+        start: { x: max[0] - marginX, y: flyAltitude, z: max[2] - marginZ },
+        end: { x: min[0] + marginX, y: flyAltitude, z: min[2] + marginZ },
+      },
+      {
         name: 'Low Altitude',
         description: 'Low flight path (30m)',
-        start: { x: max[0] - marginX, y: 30, z: max[2] - marginZ },
-        end: { x: min[0] + marginX, y: 30, z: min[2] + marginZ },
+        start: { x: max[0] - marginX, y: 30, z: center[2] },
+        end: { x: min[0] + marginX, y: 30, z: center[2] },
       },
       {
         name: 'High Altitude',
         description: 'High flight path (near max)',
-        start: { x: max[0] - marginX, y: max[1] - 20, z: max[2] - marginZ },
-        end: { x: min[0] + marginX, y: max[1] - 20, z: min[2] + marginZ },
+        start: { x: max[0] - marginX, y: max[1] - 20, z: center[2] },
+        end: { x: min[0] + marginX, y: max[1] - 20, z: center[2] },
       },
     ];
   }, [sceneBounds]);
