@@ -38,10 +38,12 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [hovered, setHovered] = useState(false)
 
+  const baseHeight = 20 // Height just above floor
+
   useFrame((state) => {
     if (meshRef.current) {
-      // Gentle floating animation
-      meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 2) * 2 + 15
+      // Gentle floating animation just above the floor
+      meshRef.current.position.y = baseHeight + Math.sin(state.clock.elapsedTime * 2) * 2
     }
   })
 
@@ -59,16 +61,16 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
         <meshBasicMaterial color={pulseColor} transparent opacity={0.3} />
       </mesh>
 
-      {/* Vertical beam */}
-      <mesh position={[0, position[1] / 2 + 5, 0]}>
-        <cylinderGeometry args={[1, 1, position[1] + 10, 8]} />
+      {/* Short vertical beam */}
+      <mesh position={[0, baseHeight / 2, 0]}>
+        <cylinderGeometry args={[1, 1, baseHeight, 8]} />
         <meshBasicMaterial color={color} transparent opacity={0.4} />
       </mesh>
 
-      {/* Floating marker */}
+      {/* Floating marker just above floor */}
       <mesh
         ref={meshRef}
-        position={[0, position[1] + 15, 0]}
+        position={[0, baseHeight, 0]}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
@@ -82,7 +84,7 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
 
       {/* Label */}
       <Html
-        position={[0, position[1] + 35, 0]}
+        position={[0, baseHeight + 20, 0]}
         center
         style={{
           color: '#fff',
