@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { Wind } from 'lucide-react'
 import Scene from './components/Scene'
 import SplitView from './components/SplitView'
 import DemoOrchestrator from './components/DemoOrchestrator'
@@ -29,6 +30,16 @@ function App() {
               ...viewToggleStyles.button,
               ...(viewMode === 'cinematic' ? viewToggleStyles.active : {}),
             }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'cinematic') {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'cinematic') {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }
+            }}
             onClick={() => setViewMode('cinematic')}
           >
             Cinematic
@@ -37,6 +48,16 @@ function App() {
             style={{
               ...viewToggleStyles.button,
               ...(viewMode === 'split' ? viewToggleStyles.active : {}),
+            }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'split') {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'split') {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }
             }}
             onClick={() => setViewMode('split')}
           >
@@ -47,33 +68,58 @@ function App() {
               ...viewToggleStyles.button,
               ...(viewMode === 'combined' ? viewToggleStyles.active : {}),
             }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'combined') {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'combined') {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }
+            }}
             onClick={() => setViewMode('combined')}
           >
             Combined
           </button>
         </div>
 
-        {/* Wind Field Toggle - Bottom Left */}
+        {/* Wind Field Toggle - Below View Selection */}
         <button
           style={{
-            position: 'fixed',
-            bottom: '20px',
-            left: '20px',
-            padding: '12px',
-            background: visibility.windField ? '#4a9eff' : 'rgba(0,0,0,0.5)',
+            position: 'absolute',
+            top: '68px',
+            right: '16px',
+            padding: '10px',
+            background: visibility.windField ? 'rgba(78, 205, 196, 0.9)' : 'rgba(0, 0, 0, 0.75)',
             border: 'none',
             borderRadius: '8px',
-            color: 'white',
-            fontSize: '24px',
+            color: '#fff',
             cursor: 'pointer',
             zIndex: 1000,
-            transition: 'all 0.3s ease',
+            transition: 'all 0.2s ease',
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)'
+            e.currentTarget.style.background = visibility.windField
+              ? 'rgba(78, 205, 196, 1)'
+              : 'rgba(0, 0, 0, 0.85)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)'
+            e.currentTarget.style.background = visibility.windField
+              ? 'rgba(78, 205, 196, 0.9)'
+              : 'rgba(0, 0, 0, 0.75)'
           }}
           onClick={() => setVisibility({ ...visibility, windField: !visibility.windField })}
           title={visibility.windField ? 'Hide Wind Field' : 'Show Wind Field'}
         >
-          💨
+          <Wind size={20} />
         </button>
 
         {/* 3D View based on mode */}
@@ -82,6 +128,7 @@ function App() {
             autoStart={true}
             routeCreationSpeed={0.02}
             transitionDuration={2000}
+            visibility={visibility}
           />
         ) : viewMode === 'split' ? (
           <>
@@ -120,24 +167,25 @@ const viewToggleStyles: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 4,
     zIndex: 1000,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
     padding: 4,
-    boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+    backdropFilter: 'blur(5px)',
   },
   button: {
     padding: '8px 16px',
     border: 'none',
     borderRadius: 6,
     backgroundColor: 'transparent',
-    color: '#555',
+    color: '#fff',
     cursor: 'pointer',
     fontSize: 12,
     fontWeight: 500,
     transition: 'all 0.2s',
   },
   active: {
-    backgroundColor: '#4a9eff',
+    backgroundColor: 'rgba(78, 205, 196, 0.9)',
     color: '#fff',
   },
 }

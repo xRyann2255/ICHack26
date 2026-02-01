@@ -85,12 +85,23 @@ export default function MetricsOverlay({
   const wind = getWindIndicator(frame)
   const effortColor = getEffortColor(frame.effort)
   const accentColor = routeType === 'naive' ? '#ff6b6b' : '#4ecdc4'
+  const routeLabel = routeType === 'naive' ? 'Naive Route' : 'Wind-Optimized Route'
   const progress = totalWaypoints > 0
     ? Math.round((frame.waypoint_index / totalWaypoints) * 100)
     : 0
 
   return (
     <div style={styles.container}>
+      {/* Route Title */}
+      <div style={styles.routeTitle}>
+        <span style={{ color: accentColor, fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {routeLabel}
+        </span>
+      </div>
+
+      {/* Divider */}
+      <div style={styles.titleDivider} />
+
       {/* Main stats row */}
       <div style={styles.mainStats}>
         {/* Speed */}
@@ -216,6 +227,16 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 100,
     minWidth: 280,
     fontSize: 12,
+  },
+  routeTitle: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  titleDivider: {
+    height: 1,
+    backgroundColor: '#444',
+    marginBottom: 12,
   },
   mainStats: {
     display: 'flex',

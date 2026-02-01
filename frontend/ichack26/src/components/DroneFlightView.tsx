@@ -160,9 +160,6 @@ export default function DroneFlightView({
     <div style={styles.container}>
       {/* Left panel - Naive route */}
       <div style={styles.panel}>
-        <div style={{ ...styles.label, backgroundColor: 'rgba(255, 107, 107, 0.9)' }}>
-          Naive Route
-        </div>
         <Canvas
           camera={{
             position: [300, 200, 300],
@@ -186,9 +183,6 @@ export default function DroneFlightView({
 
       {/* Right panel - Optimized route */}
       <div style={styles.panel}>
-        <div style={{ ...styles.label, backgroundColor: 'rgba(78, 205, 196, 0.9)' }}>
-          Wind-Optimized Route
-        </div>
         <Canvas
           camera={{
             position: [300, 200, 300],
@@ -230,21 +224,5 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#333',
     boxShadow: '0 0 10px rgba(0,0,0,0.5)',
     zIndex: 10,
-  },
-  label: {
-    position: 'absolute',
-    top: 16,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    padding: '10px 24px',
-    borderRadius: 20,
-    color: '#fff',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: 14,
-    fontWeight: 600,
-    zIndex: 100,
-    textTransform: 'uppercase',
-    letterSpacing: '1px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
   },
 }
