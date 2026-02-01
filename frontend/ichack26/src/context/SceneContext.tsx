@@ -5,7 +5,7 @@
  */
 
 import { createContext, useContext, type ReactNode, useMemo, useCallback, useState } from 'react';
-import { useWebSocket, type SimulationState, type PlaybackControl, type SpeedSample } from '../hooks/useWebSocket';
+import { useWebSocket, type SimulationState, type PlaybackControl, type SpeedSample, type FrameSubscriber } from '../hooks/useWebSocket';
 import type {
   ConnectionStatus,
   SceneData,
@@ -74,6 +74,10 @@ export interface SceneContextValue {
   playback: PlaybackControl;
   setPlaybackPaused: (paused: boolean) => void;
   setPlaybackSpeed: (speed: number) => void;
+
+  // Frame subscription (for high-frequency updates without React re-renders)
+  subscribeToFrames: (callback: FrameSubscriber) => () => void;
+  getCurrentFrames: () => { naive: FrameData | null; optimized: FrameData | null };
 
   // Computed helpers
   sceneBounds: {
@@ -220,6 +224,10 @@ export function SceneProvider({
       playback: ws.playback,
       setPlaybackPaused: ws.setPlaybackPaused,
       setPlaybackSpeed: ws.setPlaybackSpeed,
+
+      // Frame subscription
+      subscribeToFrames: ws.subscribeToFrames,
+      getCurrentFrames: ws.getCurrentFrames,
 
       // Helpers
       sceneBounds,

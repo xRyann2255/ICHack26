@@ -150,7 +150,7 @@ export function FollowCamera({
   const _targetPositionRef = useRef(new THREE.Vector3()); void _targetPositionRef;
   const currentLookAtRef = useRef(new THREE.Vector3())
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!target || !enabled) return
 
     // Get target position
@@ -169,12 +169,16 @@ export function FollowCamera({
 
     const idealPosition = targetPos.clone().add(offset)
 
+    // Frame-rate independent exponential smoothing
+    const smoothingFactor = smoothing * 60
+    const lerpFactor = 1 - Math.exp(-smoothingFactor * delta)
+
     // Smooth camera position
-    camera.position.lerp(idealPosition, smoothing)
+    camera.position.lerp(idealPosition, lerpFactor)
 
     // Calculate look-at point (ahead of target)
     const lookAtPoint = targetPos.clone().add(headingDir.multiplyScalar(lookAhead))
-    currentLookAtRef.current.lerp(lookAtPoint, smoothing)
+    currentLookAtRef.current.lerp(lookAtPoint, lerpFactor)
     camera.lookAt(currentLookAtRef.current)
   })
 

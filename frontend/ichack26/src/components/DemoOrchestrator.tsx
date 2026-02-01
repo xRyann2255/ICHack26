@@ -50,7 +50,7 @@ export interface DemoOrchestratorProps {
 // ============================================================================
 
 export default function DemoOrchestrator({
-  autoStart = true,
+  autoStart: _autoStart = true,
   routeCreationSpeed = 0.008,
   transitionDuration = 2500,
   visibility,
@@ -101,6 +101,8 @@ export default function DemoOrchestrator({
 
   // Handle entering planning mode
   const handlePlanRoute = () => {
+    // Reset route progress to ensure fresh animation
+    setRouteProgress(0)
     enterPlanningMode()
     setPhase('route_planning')
   }
@@ -108,7 +110,8 @@ export default function DemoOrchestrator({
   // Handle planning a new route after completion
   const handlePlanNewRoute = () => {
     // enterPlanningMode() resets simulation state and sets routePlanningMode to 'selecting_start'
-    // The effect watching routePlanningMode will then set phase to 'route_planning'
+    // Reset route progress to ensure fresh animation for new route
+    setRouteProgress(0)
     enterPlanningMode()
     setPhase('route_planning')
   }
@@ -131,27 +134,29 @@ export default function DemoOrchestrator({
   useEffect(() => {
     // Only start if we're in route_planning phase AND actively calculating (user clicked "Calculate Route")
     // This prevents triggering on stale data from previous simulations
-    if (paths && phase === 'route_planning' && routePlanningMode === 'calculating') {
+    if (phase === 'route_planning' && routePlanningMode === 'calculating') {
+      const hasValidPaths = (paths?.naive && paths.naive.length > 0) ||
+        (paths?.optimized && paths.optimized.length > 0)
       const isSimulationStarted = simulation.status === 'paths_received' ||
         simulation.status === 'simulating'
-      const hasValidPaths = (paths.naive && paths.naive.length > 0) ||
-        (paths.optimized && paths.optimized.length > 0)
 
-      if (isSimulationStarted && hasValidPaths) {
-        console.log('[DemoOrchestrator] Routes calculated, starting route creation', {
-          status: simulation.status,
-          naiveLength: paths.naive?.length,
-          optimizedLength: paths.optimized?.length,
-          phase,
-          routePlanningMode
-        })
+      console.log('[DemoOrchestrator] Checking route transition:', {
+        status: simulation.status,
+        hasValidPaths,
+        isSimulationStarted,
+        naiveLength: paths?.naive?.length,
+        optimizedLength: paths?.optimized?.length,
+      })
+
+      if (hasValidPaths && isSimulationStarted) {
+        console.log('[DemoOrchestrator] Routes calculated, starting route creation')
         // Reset planning mode before transitioning
         exitPlanningMode()
         setPhase('route_creation_naive')
         setRouteProgress(0)
       }
     }
-  }, [simulation.status, paths, phase, routePlanningMode, exitPlanningMode])
+  }, [simulation, paths, phase, routePlanningMode, exitPlanningMode])
 
   // Legacy auto-start disabled - users should use the "Plan Route" button
   // useEffect(() => {
@@ -175,40 +180,65 @@ export default function DemoOrchestrator({
   //   }
   // }, [autoStart, simulation.status, paths, phase])
 
-  // Route creation animation - Naive
+  // Route creation animation - Naive (using requestAnimationFrame for smooth 60fps)
   useEffect(() => {
     if (phase !== 'route_creation_naive') return
 
-    const interval = setInterval(() => {
+    let animationId: number
+    let lastTime = performance.now()
+
+    const animate = (currentTime: number) => {
+      const deltaTime = (currentTime - lastTime) / 1000 // Convert to seconds
+      lastTime = currentTime
+
       setRouteProgress(prev => {
-        if (prev >= 1) {
+        // Speed adjusted for time-based animation (routeCreationSpeed * 20 to match original ~50ms interval feel)
+        const increment = routeCreationSpeed * deltaTime * 20
+        const newProgress = prev + increment
+
+        if (newProgress >= 1) {
           // Naive route done, start optimized
           setPhase('route_creation_optimized')
           return 0 // Reset progress for next route
         }
-        return Math.min(1, prev + routeCreationSpeed)
+        return Math.min(1, newProgress)
       })
-    }, 50)
 
-    return () => clearInterval(interval)
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animationId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animationId)
   }, [phase, routeCreationSpeed])
 
-  // Route creation animation - Optimized
+  // Route creation animation - Optimized (using requestAnimationFrame for smooth 60fps)
   useEffect(() => {
     if (phase !== 'route_creation_optimized') return
 
-    const interval = setInterval(() => {
+    let animationId: number
+    let lastTime = performance.now()
+
+    const animate = (currentTime: number) => {
+      const deltaTime = (currentTime - lastTime) / 1000
+      lastTime = currentTime
+
       setRouteProgress(prev => {
-        if (prev >= 1) {
+        const increment = routeCreationSpeed * deltaTime * 20
+        const newProgress = prev + increment
+
+        if (newProgress >= 1) {
           // Both routes done, transition
           setPhase('transition')
           return 1
         }
-        return Math.min(1, prev + routeCreationSpeed)
+        return Math.min(1, newProgress)
       })
-    }, 50)
 
-    return () => clearInterval(interval)
+      animationId = requestAnimationFrame(animate)
+    }
+
+    animationId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animationId)
   }, [phase, routeCreationSpeed])
 
   // Transition to drone flight

@@ -1,7 +1,7 @@
 /**
  * Animated Path Component
  *
- * Path that draws itself progressively, showing waypoints appearing one by one.
+ * Path that draws itself progressively with smooth interpolation between waypoints.
  */
 
 import { useMemo } from 'react'
@@ -28,6 +28,39 @@ export interface AnimatedPathProps {
 }
 
 // ============================================================================
+// Exploration Point Component (synced exactly to line front)
+// ============================================================================
+
+interface ExplorationPointProps {
+  /** Position at the front of the line */
+  position: THREE.Vector3
+  color: string
+}
+
+function ExplorationPoint({ position, color }: ExplorationPointProps) {
+  return (
+    <group position={position}>
+      {/* Inner bright sphere */}
+      <mesh>
+        <sphereGeometry args={[3, 16, 16]} />
+        <meshBasicMaterial color={color} />
+      </mesh>
+      {/* Outer glow */}
+      <mesh>
+        <sphereGeometry args={[5, 16, 16]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.3}
+        />
+      </mesh>
+      {/* Point light for glow effect */}
+      <pointLight color={color} intensity={2} distance={30} />
+    </group>
+  )
+}
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -39,19 +72,43 @@ export default function AnimatedPath({
   showExplorationPoint = true,
   explorationColor = '#ffd93d',
 }: AnimatedPathProps) {
-  // Calculate visible portion of path
-  const { visiblePoints, currentPoint } = useMemo(() => {
-    const numVisible = Math.floor(progress * path.length)
-    const visible = path.slice(0, Math.max(2, numVisible))
-    const current = numVisible > 0 && numVisible <= path.length
-      ? path[numVisible - 1]
-      : null
+  // Convert path to Vector3 array once
+  const pathVectors = useMemo(() =>
+    path.map(p => new THREE.Vector3(p[0], p[1], p[2])),
+    [path]
+  )
 
-    return {
-      visiblePoints: visible.map(p => new THREE.Vector3(p[0], p[1], p[2])),
-      currentPoint: current ? new THREE.Vector3(current[0], current[1], current[2]) : null,
+  // Calculate visible portion of path with smooth interpolation
+  const visiblePoints = useMemo(() => {
+    if (pathVectors.length < 2) return []
+
+    // Get the number of complete segments plus the partial one
+    const totalSegments = pathVectors.length - 1
+    const exactIndex = progress * totalSegments
+    const lastCompleteIndex = Math.floor(exactIndex)
+    const segmentT = exactIndex - lastCompleteIndex
+
+    // Build visible points array
+    const points: THREE.Vector3[] = []
+
+    // Add all complete waypoints
+    for (let i = 0; i <= lastCompleteIndex && i < pathVectors.length; i++) {
+      points.push(pathVectors[i].clone())
     }
-  }, [path, progress])
+
+    // Add interpolated endpoint if we're partway through a segment
+    if (segmentT > 0.001 && lastCompleteIndex < totalSegments) {
+      const interpolated = new THREE.Vector3()
+      interpolated.lerpVectors(
+        pathVectors[lastCompleteIndex],
+        pathVectors[lastCompleteIndex + 1],
+        segmentT
+      )
+      points.push(interpolated)
+    }
+
+    return points
+  }, [pathVectors, progress])
 
   if (visiblePoints.length < 2) return null
 
@@ -66,26 +123,12 @@ export default function AnimatedPath({
         opacity={0.9}
       />
 
-      {/* Current exploration point (glowing sphere) */}
-      {showExplorationPoint && currentPoint && (
-        <group position={currentPoint}>
-          {/* Inner bright sphere */}
-          <mesh>
-            <sphereGeometry args={[3, 16, 16]} />
-            <meshBasicMaterial color={explorationColor} />
-          </mesh>
-          {/* Outer glow */}
-          <mesh>
-            <sphereGeometry args={[5, 16, 16]} />
-            <meshBasicMaterial
-              color={explorationColor}
-              transparent
-              opacity={0.3}
-            />
-          </mesh>
-          {/* Point light for glow effect */}
-          <pointLight color={explorationColor} intensity={2} distance={30} />
-        </group>
+      {/* Exploration point - always at the exact front of the line */}
+      {showExplorationPoint && visiblePoints.length >= 2 && (
+        <ExplorationPoint
+          position={visiblePoints[visiblePoints.length - 1]}
+          color={explorationColor}
+        />
       )}
 
       {/* Start point marker */}

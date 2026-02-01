@@ -62,6 +62,9 @@ export interface PlaybackControl {
   speed: number;
 }
 
+// Frame subscription for high-frequency updates without React re-renders
+export type FrameSubscriber = (frames: { naive: FrameData | null; optimized: FrameData | null }) => void;
+
 export interface UseWebSocketReturn {
   // Connection state
   status: ConnectionStatus;
@@ -78,6 +81,10 @@ export interface UseWebSocketReturn {
   playback: PlaybackControl;
   setPlaybackPaused: (paused: boolean) => void;
   setPlaybackSpeed: (speed: number) => void;
+
+  // Frame subscription (for high-frequency updates without React re-renders)
+  subscribeToFrames: (callback: FrameSubscriber) => () => void;
+  getCurrentFrames: () => { naive: FrameData | null; optimized: FrameData | null };
 
   // Actions
   connect: () => void;
@@ -149,6 +156,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const statusRef = useRef(status); // Keep status ref in sync for interval callback
   const connectRef = useRef<() => void>(() => {}); // Ref for connect function
 
+  // High-frequency frame data stored in refs to avoid React re-renders
+  const currentFramesRef = useRef<{ naive: FrameData | null; optimized: FrameData | null }>({ naive: null, optimized: null });
+  const frameSubscribersRef = useRef<Set<FrameSubscriber>>(new Set());
+  const frameCountRef = useRef<{ naive: number; optimized: number }>({ naive: 0, optimized: 0 });
+  const speedHistoryRef = useRef<{ naive: SpeedSample[]; optimized: SpeedSample[] }>({ naive: [], optimized: [] });
+
   // Keep refs in sync
   playbackRef.current = playback;
   statusRef.current = status;
@@ -210,44 +223,70 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
             }));
             break;
 
-          case 'frame':
+          case 'frame': {
             // Skip frame updates if paused
             if (playbackRef.current.isPaused) {
               break;
             }
 
-            // Debug: log every 20th frame to see what's coming in
-            if (Math.floor(message.data.time * 10) % 20 === 0) {
+            const route = message.route as 'naive' | 'optimized';
+
+            // Debug: log every 100th frame to reduce console noise
+            frameCountRef.current[route]++;
+            if (frameCountRef.current[route] % 100 === 0) {
               console.log(`[WS] Frame ${message.route}: t=${message.data.time.toFixed(2)}, pos=(${message.data.position[0].toFixed(1)},${message.data.position[1].toFixed(1)},${message.data.position[2].toFixed(1)})`);
             }
 
-            // Update current frame and collect speed sample
-            setSimulation((prev) => {
-              const route = message.route as 'naive' | 'optimized';
+            // Update frame data in ref (no React re-render)
+            currentFramesRef.current = {
+              ...currentFramesRef.current,
+              [route]: message.data,
+            };
+
+            // Notify subscribers (Three.js components can update directly)
+            frameSubscribersRef.current.forEach(subscriber => {
+              subscriber(currentFramesRef.current);
+            });
+
+            // Sample speed history every 5th frame to reduce memory pressure
+            // Also cap at 500 samples max to prevent unbounded growth
+            if (frameCountRef.current[route] % 5 === 0) {
               const newSample: SpeedSample = {
                 time: message.data.time,
                 groundspeed: message.data.groundspeed,
                 airspeed: message.data.airspeed,
               };
+              speedHistoryRef.current[route].push(newSample);
+              // Keep only last 500 samples
+              if (speedHistoryRef.current[route].length > 500) {
+                speedHistoryRef.current[route] = speedHistoryRef.current[route].slice(-500);
+              }
+            }
 
-              return {
+            // Update React state only every 10th frame for UI that needs it
+            if (frameCountRef.current[route] % 10 === 0) {
+              setSimulation((prev) => ({
                 ...prev,
-                currentFrame: {
-                  ...prev.currentFrame,
-                  [route]: message.data,
-                },
+                currentFrame: currentFramesRef.current,
                 speedHistory: {
-                  ...prev.speedHistory,
-                  [route]: [...prev.speedHistory[route], newSample],
+                  naive: [...speedHistoryRef.current.naive],
+                  optimized: [...speedHistoryRef.current.optimized],
                 },
-              };
-            });
+              }));
+            }
             break;
+          }
 
           case 'simulation_end':
             console.log('[WS] Simulation ended:', message.route, message.metrics);
+            // Sync final frame data to React state
             setSimulation((prev) => ({
               ...prev,
+              currentFrame: currentFramesRef.current,
+              speedHistory: {
+                naive: [...speedHistoryRef.current.naive],
+                optimized: [...speedHistoryRef.current.optimized],
+              },
               metrics: {
                 ...prev.metrics,
                 [message.route]: message.metrics,
@@ -420,6 +459,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         ...INITIAL_SIMULATION_STATE,
         status: 'loading',
       });
+      // Reset refs for new simulation
+      currentFramesRef.current = { naive: null, optimized: null };
+      frameCountRef.current = { naive: 0, optimized: 0 };
+      speedHistoryRef.current = { naive: [], optimized: [] };
 
       // Request scene data first if not already loaded
       if (!sceneData || !windFieldData) {
@@ -444,6 +487,23 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   // Reset simulation state (for starting a new route)
   const resetSimulation = useCallback(() => {
     setSimulation(INITIAL_SIMULATION_STATE);
+    // Also reset refs
+    currentFramesRef.current = { naive: null, optimized: null };
+    frameCountRef.current = { naive: 0, optimized: 0 };
+    speedHistoryRef.current = { naive: [], optimized: [] };
+  }, []);
+
+  // Frame subscription functions
+  const subscribeToFrames = useCallback((callback: FrameSubscriber) => {
+    frameSubscribersRef.current.add(callback);
+    // Return unsubscribe function
+    return () => {
+      frameSubscribersRef.current.delete(callback);
+    };
+  }, []);
+
+  const getCurrentFrames = useCallback(() => {
+    return currentFramesRef.current;
   }, []);
 
   // Playback control functions
@@ -524,6 +584,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     playback,
     setPlaybackPaused,
     setPlaybackSpeed,
+    subscribeToFrames,
+    getCurrentFrames,
     connect,
     disconnect,
     send,
@@ -537,3 +599,41 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 }
 
 export default useWebSocket;
+
+// ============================================================================
+// useFrameData Hook - For efficient frame access in Three.js components
+// ============================================================================
+
+/**
+ * Hook for accessing frame data efficiently in Three.js components.
+ * Uses a ref pattern that works well with useFrame from @react-three/fiber.
+ *
+ * Usage:
+ * ```tsx
+ * function MyComponent() {
+ *   const { subscribeToFrames, getCurrentFrames } = useScene();
+ *   const frameRef = useFrameRef(subscribeToFrames, getCurrentFrames);
+ *
+ *   useFrame(() => {
+ *     const frame = frameRef.current.naive; // or .optimized
+ *     // Update Three.js objects directly
+ *   });
+ * }
+ * ```
+ */
+export function useFrameRef(
+  subscribe: (callback: FrameSubscriber) => () => void,
+  getSnapshot: () => { naive: FrameData | null; optimized: FrameData | null }
+) {
+  const frameRef = useRef(getSnapshot());
+
+  useEffect(() => {
+    // Update ref whenever frames change
+    const unsubscribe = subscribe((frames) => {
+      frameRef.current = frames;
+    });
+    return unsubscribe;
+  }, [subscribe]);
+
+  return frameRef;
+}

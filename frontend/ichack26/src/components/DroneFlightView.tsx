@@ -4,7 +4,7 @@
  * Phase 2: Side-by-side third-person view of drones flying their routes.
  */
 
-import { Suspense } from 'react'
+import { Suspense, useRef, useEffect, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Grid } from '@react-three/drei'
 import Terrain from './Terrain'
@@ -14,6 +14,7 @@ import Drone from './Drone'
 import ThirdPersonCamera from './ThirdPersonCamera'
 import MetricsOverlay from './MetricsOverlay'
 import { useScene } from '../context/SceneContext'
+import type { FrameData } from '../types/api'
 
 // ============================================================================
 // Types
@@ -55,6 +56,92 @@ function Lighting() {
 }
 
 // ============================================================================
+// Subscribed Drone Component - reads frame data via subscription, not React state
+// ============================================================================
+
+interface SubscribedDroneProps {
+  routeType: 'naive' | 'optimized'
+  color: string
+}
+
+function SubscribedDrone({ routeType, color }: SubscribedDroneProps) {
+  const { subscribeToFrames, getCurrentFrames } = useScene()
+  const frameRef = useRef<FrameData | null>(null)
+  const [hasFrame, setHasFrame] = useState(false)
+
+  // Subscribe to frame updates - store in ref for useFrame access
+  useEffect(() => {
+    // Get initial frame
+    const frames = getCurrentFrames()
+    const frame = routeType === 'naive' ? frames.naive : frames.optimized
+    frameRef.current = frame
+    if (frame) setHasFrame(true)
+
+    // Subscribe to updates
+    const unsubscribe = subscribeToFrames((frames) => {
+      const newFrame = routeType === 'naive' ? frames.naive : frames.optimized
+      frameRef.current = newFrame
+      // Only trigger re-render once when we first get a frame
+      if (newFrame && !hasFrame) {
+        setHasFrame(true)
+      }
+    })
+    return unsubscribe
+  }, [subscribeToFrames, getCurrentFrames, routeType, hasFrame])
+
+  // Don't render until we have frame data
+  if (!hasFrame && !frameRef.current) return null
+
+  // Pass frameRef directly - Drone reads from ref in useFrame, no React re-renders
+  return (
+    <Drone
+      frameRef={frameRef}
+      color={color}
+      scale={2.5}
+      showTrail={true}
+      showEffort={true}
+      showWind={true}
+    />
+  )
+}
+
+// ============================================================================
+// Subscribed Camera Component - reads position via subscription
+// ============================================================================
+
+interface SubscribedCameraProps {
+  routeType: 'naive' | 'optimized'
+}
+
+function SubscribedCamera({ routeType }: SubscribedCameraProps) {
+  const { subscribeToFrames, getCurrentFrames } = useScene()
+  const frameRef = useRef<FrameData | null>(null)
+
+  // Subscribe to frame updates
+  useEffect(() => {
+    const frames = getCurrentFrames()
+    frameRef.current = routeType === 'naive' ? frames.naive : frames.optimized
+
+    const unsubscribe = subscribeToFrames((frames) => {
+      frameRef.current = routeType === 'naive' ? frames.naive : frames.optimized
+    })
+    return unsubscribe
+  }, [subscribeToFrames, getCurrentFrames, routeType])
+
+  return (
+    <ThirdPersonCamera
+      position={frameRef.current?.position || null}
+      heading={frameRef.current?.heading || null}
+      followDistance={50}
+      followHeight={25}
+      smoothing={0.05}
+      active={true}
+      frameRef={frameRef}
+    />
+  )
+}
+
+// ============================================================================
 // Flight Scene Content
 // ============================================================================
 
@@ -64,10 +151,9 @@ interface FlightSceneProps {
 }
 
 function FlightScene({ routeType, showWindField }: FlightSceneProps) {
-  const { windFieldData, paths, currentFrame } = useScene()
+  const { windFieldData, paths } = useScene()
 
   const path = routeType === 'naive' ? paths?.naive : paths?.optimized
-  const frame = routeType === 'naive' ? currentFrame.naive : currentFrame.optimized
   const pathColor = routeType === 'naive' ? '#ff6b6b' : '#4ecdc4'
 
   return (
@@ -102,27 +188,11 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
         />
       )}
 
-      {/* Drone */}
-      {frame && (
-        <Drone
-          frame={frame}
-          color={pathColor}
-          scale={2.5}
-          showTrail={true}
-          showEffort={true}
-          showWind={true}
-        />
-      )}
+      {/* Drone - uses subscription for smooth updates */}
+      <SubscribedDrone routeType={routeType} color={pathColor} />
 
-      {/* Third-person camera */}
-      <ThirdPersonCamera
-        position={frame?.position || null}
-        heading={frame?.heading || null}
-        followDistance={50}
-        followHeight={25}
-        smoothing={0.05}
-        active={true}
-      />
+      {/* Third-person camera - uses subscription for smooth updates */}
+      <SubscribedCamera routeType={routeType} />
 
       {/* Ground grid */}
       <Grid

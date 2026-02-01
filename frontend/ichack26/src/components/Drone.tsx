@@ -5,7 +5,7 @@
  * Shows position, heading (crabbing into wind), and effort level.
  */
 
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, type MutableRefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { FrameData } from '../types/api'
@@ -15,8 +15,10 @@ import type { FrameData } from '../types/api'
 // ============================================================================
 
 export interface DroneProps {
-  /** Current frame data from simulation */
-  frame: FrameData | null
+  /** Current frame data from simulation (or use frameRef for subscription-based updates) */
+  frame?: FrameData | null
+  /** Optional ref to frame data for subscription-based updates (avoids React re-renders) */
+  frameRef?: MutableRefObject<FrameData | null>
   /** Drone color (default varies by effort) */
   color?: string
   /** Scale multiplier */
@@ -378,6 +380,7 @@ function RotorWash({ propellerPositions, color, scale, active }: RotorWashProps)
 
 interface FadingTrailProps {
   position: THREE.Vector3 | null
+  positionRef?: MutableRefObject<THREE.Vector3 | null>
   color: THREE.Color
   maxPoints?: number
   maxAge?: number
@@ -386,6 +389,7 @@ interface FadingTrailProps {
 
 function FadingMotionTrail({
   position,
+  positionRef,
   color,
   maxPoints = 60,
   maxAge = 1.5,
@@ -416,21 +420,23 @@ function FadingMotionTrail({
   }, [maxPoints])
 
   useFrame((state) => {
-    if (!position) return
+    // Prefer positionRef if available (subscription-based updates)
+    const currentPosition = positionRef?.current || position
+    if (!currentPosition) return
 
     const now = state.clock.elapsedTime
     const points = pointsRef.current
 
     // Detect large position jump (new simulation) - clear trail
-    if (lastPositionRef.current && position.distanceTo(lastPositionRef.current) > 50) {
+    if (lastPositionRef.current && currentPosition.distanceTo(lastPositionRef.current) > 50) {
       pointsRef.current = []
     }
-    lastPositionRef.current = position.clone()
+    lastPositionRef.current = currentPosition.clone()
 
     // Add new point (throttled)
     if (now - lastAddTimeRef.current > 0.02) {
       points.push({
-        position: position.clone(),
+        position: currentPosition.clone(),
         time: now,
       })
       lastAddTimeRef.current = now
@@ -483,7 +489,8 @@ const _headingVec = new THREE.Vector3()
 const _yAxis = new THREE.Vector3(0, 1, 0)
 
 export default function Drone({
-  frame,
+  frame: frameProp,
+  frameRef,
   color,
   scale = 1.5,
   showEffort = true,
@@ -501,23 +508,40 @@ export default function Drone({
   const currentPositionRef = useRef(new THREE.Vector3())
   const isInitializedRef = useRef(false)
   const lastFrameTimeRef = useRef<number | null>(null)
+  // Store current frame data in a ref for non-re-rendering access
+  const currentFrameRef = useRef<FrameData | null>(frameProp || null)
+  // Track trail position in a ref to avoid re-renders
+  const trailPositionRef = useRef<THREE.Vector3 | null>(null)
 
-  // Calculate color based on effort
+  // Calculate color based on effort (uses prop for initial render)
   const droneColor = useMemo(() => {
     if (color) return new THREE.Color(color)
+    const frame = frameProp || frameRef?.current
     if (frame && showEffort) return effortToColor(frame.effort)
     return new THREE.Color('#4ecdc4')
-  }, [color, frame, showEffort])
+  }, [color, frameProp, frameRef, showEffort])
 
-  // Current position for trail
+  // Current position for trail - initial value
   const trailPosition = useMemo(() => {
+    const frame = frameProp || frameRef?.current
     if (!frame) return null
     return new THREE.Vector3(...frame.position)
-  }, [frame])
+  }, [frameProp, frameRef])
 
   // Update target position and rotation from frame data
   useFrame((_, delta) => {
+    // Prefer frameRef if available (subscription-based, avoids React re-renders)
+    const frame = frameRef?.current ?? frameProp ?? null
+    currentFrameRef.current = frame
+
     if (!frame || !groupRef.current) return
+
+    // Update trail position ref
+    if (!trailPositionRef.current) {
+      trailPositionRef.current = new THREE.Vector3(...frame.position)
+    } else {
+      trailPositionRef.current.set(frame.position[0], frame.position[1], frame.position[2])
+    }
 
     // Update target position
     targetPositionRef.current.set(frame.position[0], frame.position[1], frame.position[2])
@@ -527,20 +551,17 @@ export default function Drone({
     const isNewSimulation = lastFrameTimeRef.current !== null && frame.time < lastFrameTimeRef.current - 0.5
     const needsSnap = !isInitializedRef.current || distanceToTarget > 50 || isNewSimulation
 
-    // Debug logging for jumping issue
-    if (distanceToTarget > 10 && isInitializedRef.current) {
-      console.warn(`[Drone] Large jump detected: ${distanceToTarget.toFixed(1)}m, frame.time=${frame.time}, current=(${currentPositionRef.current.x.toFixed(1)},${currentPositionRef.current.y.toFixed(1)},${currentPositionRef.current.z.toFixed(1)}), target=(${frame.position[0].toFixed(1)},${frame.position[1].toFixed(1)},${frame.position[2].toFixed(1)})`)
-    }
-
     if (needsSnap) {
       // Snap to target position immediately
       currentPositionRef.current.copy(targetPositionRef.current)
       groupRef.current.position.copy(targetPositionRef.current)
       isInitializedRef.current = true
-      console.log(`[Drone] Snapped to position: (${frame.position[0].toFixed(1)},${frame.position[1].toFixed(1)},${frame.position[2].toFixed(1)})`)
     } else {
-      // Smooth interpolation for position
-      const posLerpFactor = Math.min(1, delta * 15)
+      // Smooth exponential interpolation for position
+      // Using 1 - e^(-k*dt) for frame-rate independent smoothing
+      // Higher k = faster catch-up, lower k = smoother but more lag
+      const smoothingFactor = 8 // Adjust this for smoothness vs responsiveness
+      const posLerpFactor = 1 - Math.exp(-smoothingFactor * delta)
       currentPositionRef.current.lerp(targetPositionRef.current, posLerpFactor)
       groupRef.current.position.copy(currentPositionRef.current)
     }
@@ -565,18 +586,26 @@ export default function Drone({
     if (needsSnap) {
       groupRef.current.quaternion.copy(targetQuaternionRef.current)
     } else {
-      groupRef.current.quaternion.slerp(targetQuaternionRef.current, Math.min(1, delta * 10))
+      // Frame-rate independent rotation smoothing
+      const rotSmoothingFactor = 6
+      const rotLerpFactor = 1 - Math.exp(-rotSmoothingFactor * delta)
+      groupRef.current.quaternion.slerp(targetQuaternionRef.current, rotLerpFactor)
     }
   })
 
-  // Don't render if no frame data
-  if (!frame) return null
+  // Don't render if no frame data (check both prop and ref)
+  const initialFrame = frameProp || frameRef?.current
+  if (!initialFrame) return null
 
   return (
     <group>
-      {/* Enhanced fading motion trail */}
+      {/* Enhanced fading motion trail - uses ref internally for smooth updates */}
       {showTrail && (
-        <FadingMotionTrail position={trailPosition} color={droneColor} />
+        <FadingMotionTrail
+          position={trailPosition}
+          positionRef={trailPositionRef}
+          color={droneColor}
+        />
       )}
 
       {/* Main drone group (position and rotation controlled by useFrame) */}
@@ -599,20 +628,20 @@ export default function Drone({
         )}
 
         {/* Heading arrow (shows where drone is pointing) */}
-        {showHeadingArrow && frame.heading && (
-          <HeadingArrow heading={frame.heading} />
+        {showHeadingArrow && initialFrame.heading && (
+          <HeadingArrow heading={initialFrame.heading} />
         )}
 
         {/* Wind vector at drone position */}
-        {showWind && frame.wind && (
-          <WindVector wind={frame.wind} />
+        {showWind && initialFrame.wind && (
+          <WindVector wind={initialFrame.wind} />
         )}
 
         {/* Effort glow effect */}
-        {showEffort && frame.effort > 0.5 && (
+        {showEffort && initialFrame.effort > 0.5 && (
           <pointLight
             color={droneColor}
-            intensity={frame.effort * 2}
+            intensity={initialFrame.effort * 2}
             distance={10}
           />
         )}

@@ -396,16 +396,18 @@ class WebSocketServer:
             # Retry with increasing height if no path found
             naive_result = None
             current_start = start_vec
+            current_end = end_vec
             max_retries = 20  # Max 100m height increase
             for attempt in range(max_retries):
-                naive_result = self.naive_router.find_path(current_start, end_vec, capture_exploration=False)
+                naive_result = self.naive_router.find_path(current_start, current_end, capture_exploration=False)
                 if naive_result.success:
                     if attempt > 0:
-                        logger.info(f"Naive path found after raising start height by {attempt * 5}m")
+                        logger.info(f"Naive path found after raising start/end height by {attempt * 5}m")
                     break
-                # Add 5m to Y (height) and retry
+                # Add 5m to Y (height) for both start and end, then retry
                 current_start = Vector3(current_start.x, current_start.y + 5, current_start.z)
-                logger.info(f"No naive path at height {current_start.y - 5}m, trying {current_start.y}m...")
+                current_end = Vector3(current_end.x, current_end.y + 5, current_end.z)
+                logger.info(f"No naive path at height +{(attempt) * 5}m, trying +{(attempt + 1) * 5}m...")
 
             if naive_result and naive_result.success:
                 naive_path = self.smoother.smooth(naive_result.path)
@@ -418,16 +420,18 @@ class WebSocketServer:
             # Retry with increasing height if no path found
             wind_result = None
             current_start = start_vec
+            current_end = end_vec
             max_retries = 20  # Max 100m height increase
             for attempt in range(max_retries):
-                wind_result = self.wind_router.find_path(current_start, end_vec, capture_exploration=False)
+                wind_result = self.wind_router.find_path(current_start, current_end, capture_exploration=False)
                 if wind_result.success:
                     if attempt > 0:
-                        logger.info(f"Optimized path found after raising start height by {attempt * 5}m")
+                        logger.info(f"Optimized path found after raising start/end height by {attempt * 5}m")
                     break
-                # Add 5m to Y (height) and retry
+                # Add 5m to Y (height) for both start and end, then retry
                 current_start = Vector3(current_start.x, current_start.y + 5, current_start.z)
-                logger.info(f"No optimized path at height {current_start.y - 5}m, trying {current_start.y}m...")
+                current_end = Vector3(current_end.x, current_end.y + 5, current_end.z)
+                logger.info(f"No optimized path at height +{(attempt) * 5}m, trying +{(attempt + 1) * 5}m...")
 
             if wind_result and wind_result.success:
                 wind_path = self.smoother.smooth(wind_result.path)
@@ -470,15 +474,23 @@ class WebSocketServer:
             for route_name, flight_data in flight_results.items():
                 path = next(p for n, p in routes_to_run if n == route_name)
                 metrics = self.metrics_calc.calculate(path)
-                all_metrics[route_name] = metrics.to_dict()
+                metrics_dict = metrics.to_dict()
+
+                # IMPORTANT: Override theoretical flight time with actual simulated time
+                # The metrics calculator estimates time based on wind/path analysis,
+                # but the actual simulation may differ due to physics, boosting, etc.
+                metrics_dict['total_flight_time'] = round(flight_data.total_time, 2)
+                metrics_dict['average_ground_speed'] = round(flight_data.average_groundspeed, 2)
+
+                all_metrics[route_name] = metrics_dict
 
                 await self.send_json(websocket, {
                     "type": "simulation_end",
                     "route": route_name,
                     "flight_summary": flight_data.to_dict()["summary"],
-                    "metrics": metrics.to_dict()
+                    "metrics": metrics_dict
                 })
-                logger.info(f"Route {route_name} done, completed={flight_data.completed}")
+                logger.info(f"Route {route_name} done, completed={flight_data.completed}, time={flight_data.total_time:.1f}s")
         else:
             # Single route - run normally
             for route_name, path in routes_to_run:
@@ -486,15 +498,21 @@ class WebSocketServer:
                 flight_data = await self.stream_simulation(websocket, route_name, path)
 
                 metrics = self.metrics_calc.calculate(path)
-                all_metrics[route_name] = metrics.to_dict()
+                metrics_dict = metrics.to_dict()
+
+                # IMPORTANT: Override theoretical flight time with actual simulated time
+                metrics_dict['total_flight_time'] = round(flight_data.total_time, 2)
+                metrics_dict['average_ground_speed'] = round(flight_data.average_groundspeed, 2)
+
+                all_metrics[route_name] = metrics_dict
 
                 await self.send_json(websocket, {
                     "type": "simulation_end",
                     "route": route_name,
                     "flight_summary": flight_data.to_dict()["summary"],
-                    "metrics": metrics.to_dict()
+                    "metrics": metrics_dict
                 })
-                logger.info(f"Route {route_name} done, completed={flight_data.completed}")
+                logger.info(f"Route {route_name} done, completed={flight_data.completed}, time={flight_data.total_time:.1f}s")
 
         # Send completion with comparison
         await self.send_json(websocket, {

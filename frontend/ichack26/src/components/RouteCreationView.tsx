@@ -57,7 +57,7 @@ function Lighting() {
 }
 
 // ============================================================================
-// Path-Following Camera
+// Path-Following Camera (with smooth interpolation)
 // ============================================================================
 
 interface PathFollowingCameraProps {
@@ -66,10 +66,61 @@ interface PathFollowingCameraProps {
   active: boolean
 }
 
+// Helper: Get interpolated point along path
+function getInterpolatedPoint(
+  pathVectors: THREE.Vector3[],
+  progress: number,
+  outPoint: THREE.Vector3
+): void {
+  if (pathVectors.length === 0) return
+  if (pathVectors.length === 1) {
+    outPoint.copy(pathVectors[0])
+    return
+  }
+
+  const t = Math.max(0, Math.min(1, progress))
+  const totalSegments = pathVectors.length - 1
+  const exactIndex = t * totalSegments
+  const segmentIndex = Math.floor(exactIndex)
+  const segmentT = exactIndex - segmentIndex
+
+  if (segmentIndex >= totalSegments) {
+    outPoint.copy(pathVectors[pathVectors.length - 1])
+    return
+  }
+
+  outPoint.lerpVectors(pathVectors[segmentIndex], pathVectors[segmentIndex + 1], segmentT)
+}
+
+// Helper: Get smooth direction along path using multiple samples
+function getSmoothDirection(
+  pathVectors: THREE.Vector3[],
+  progress: number,
+  lookAheadAmount: number,
+  outDir: THREE.Vector3
+): void {
+  const currentPoint = new THREE.Vector3()
+  const aheadPoint = new THREE.Vector3()
+
+  getInterpolatedPoint(pathVectors, progress, currentPoint)
+  getInterpolatedPoint(pathVectors, Math.min(1, progress + lookAheadAmount), aheadPoint)
+
+  outDir.subVectors(aheadPoint, currentPoint)
+  if (outDir.length() > 0.001) {
+    outDir.normalize()
+  } else {
+    outDir.set(1, 0, 0) // Default direction
+  }
+}
+
 function PathFollowingCamera({ path, progress, active }: PathFollowingCameraProps) {
   const cameraRef = useRef<THREE.PerspectiveCamera>(null)
-  const targetPosRef = useRef(new THREE.Vector3(300, 200, 300))
-  const targetLookRef = useRef(new THREE.Vector3(0, 50, 0))
+  const currentPosRef = useRef(new THREE.Vector3(300, 200, 300))
+  const currentLookRef = useRef(new THREE.Vector3(0, 50, 0))
+  const targetPosRef = useRef(new THREE.Vector3())
+  const targetLookRef = useRef(new THREE.Vector3())
+  const currentPointRef = useRef(new THREE.Vector3())
+  const directionRef = useRef(new THREE.Vector3())
 
   // Convert path to Vector3 array
   const pathVectors = useMemo(() =>
@@ -77,39 +128,35 @@ function PathFollowingCamera({ path, progress, active }: PathFollowingCameraProp
     [path]
   )
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (!cameraRef.current || !active || pathVectors.length < 2) return
 
-    // Get current index along path
-    const currentIndex = Math.min(
-      Math.floor(progress * (pathVectors.length - 1)),
-      pathVectors.length - 2
-    )
-    const nextIndex = Math.min(currentIndex + 1, pathVectors.length - 1)
+    // Get current interpolated point along path
+    getInterpolatedPoint(pathVectors, progress, currentPointRef.current)
 
-    const currentPoint = pathVectors[currentIndex]
-    const nextPoint = pathVectors[nextIndex]
-
-    // Direction of travel
-    const direction = nextPoint.clone().sub(currentPoint).normalize()
+    // Get smooth direction of travel
+    getSmoothDirection(pathVectors, progress, 0.05, directionRef.current)
 
     // Camera offset: behind and above the current point
-    const offset = new THREE.Vector3()
-    offset.copy(direction).multiplyScalar(-60) // Behind
-    offset.y = 40 // Above
-
-    // Target camera position
-    const targetCameraPos = currentPoint.clone().add(offset)
-    targetPosRef.current.lerp(targetCameraPos, 0.03)
+    targetPosRef.current.copy(directionRef.current).multiplyScalar(-60)
+    targetPosRef.current.y = 40
+    targetPosRef.current.add(currentPointRef.current)
 
     // Look ahead along the path
-    const lookAheadIndex = Math.min(currentIndex + 5, pathVectors.length - 1)
-    const lookTarget = pathVectors[lookAheadIndex].clone()
-    targetLookRef.current.lerp(lookTarget, 0.03)
+    getInterpolatedPoint(
+      pathVectors,
+      Math.min(1, progress + 0.08),
+      targetLookRef.current
+    )
+
+    // Smooth interpolation with frame-rate independent lerp
+    const lerpFactor = Math.min(1, delta * 3)
+    currentPosRef.current.lerp(targetPosRef.current, lerpFactor)
+    currentLookRef.current.lerp(targetLookRef.current, lerpFactor)
 
     // Apply to camera
-    cameraRef.current.position.copy(targetPosRef.current)
-    cameraRef.current.lookAt(targetLookRef.current)
+    cameraRef.current.position.copy(currentPosRef.current)
+    cameraRef.current.lookAt(currentLookRef.current)
   })
 
   return (
