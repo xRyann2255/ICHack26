@@ -38,10 +38,22 @@ function Lighting() {
     <>
       <ambientLight intensity={0.4} />
       <directionalLight
-        position={[100, 200, 100]}
-        intensity={1}
+        position={[150, 300, 150]}
+        intensity={1.2}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[4096, 4096]}
+        shadow-camera-left={-500}
+        shadow-camera-right={500}
+        shadow-camera-top={500}
+        shadow-camera-bottom={-500}
+        shadow-camera-near={1}
+        shadow-camera-far={1000}
+        shadow-bias={-0.0005}
+      />
+      {/* Secondary fill light for softer shadows */}
+      <directionalLight
+        position={[-100, 100, -100]}
+        intensity={0.3}
       />
     </>
   )

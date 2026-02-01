@@ -6,6 +6,7 @@
  */
 
 import { useRef, useMemo, useEffect } from 'react'
+import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { WindFieldData, Bounds } from '../types/api'
 
@@ -28,6 +29,12 @@ export interface WindFieldProps {
   arrowSize?: number
   /** Number of curve subdivisions per segment for smoothness */
   curveSegments?: number
+  /** Enable animated particles flowing along streamlines */
+  animatedParticles?: boolean
+  /** Number of animated particles */
+  particleCount?: number
+  /** Speed multiplier for particle animation */
+  particleSpeed?: number
 }
 
 interface StreamlineData {
@@ -231,13 +238,13 @@ interface StreamlineLinesProps {
  * This creates flowing, curved lines that smoothly follow wind direction changes.
  */
 function StreamlineLines({ streamlines, opacity, curveSegments = 5 }: StreamlineLinesProps) {
-  const geometries = useMemo(() => {
+  const lines = useMemo(() => {
     return streamlines.map(({ points, velocities }) => {
       const geo = new THREE.BufferGeometry()
 
       // Need at least 2 points for a curve
       if (points.length < 2) {
-        return geo
+        return null
       }
 
       // Create a smooth CatmullRom spline through the advected points
@@ -268,21 +275,22 @@ function StreamlineLines({ streamlines, opacity, curveSegments = 5 }: Streamline
 
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-      return geo
-    })
-  }, [streamlines, curveSegments])
+
+      const material = new THREE.LineBasicMaterial({
+        vertexColors: true,
+        transparent: true,
+        opacity: opacity,
+        linewidth: 1,
+      })
+
+      return new THREE.Line(geo, material)
+    }).filter((line) => line !== null) as THREE.Line[]
+  }, [streamlines, curveSegments, opacity])
 
   return (
     <>
-      {geometries.map((geo, i) => (
-        <line key={`line-${i}`} geometry={geo}>
-          <lineBasicMaterial
-            vertexColors
-            transparent
-            opacity={opacity}
-            linewidth={1}
-          />
-        </line>
+      {lines.map((lineObj, i) => (
+        <primitive key={`line-${i}`} object={lineObj} />
       ))}
     </>
   )
@@ -380,6 +388,135 @@ function ArrowHeads({ streamlines, arrowSize, opacity }: ArrowHeadsProps) {
 }
 
 // ============================================================================
+// Animated Streamline Particles
+// ============================================================================
+
+interface AnimatedParticlesProps {
+  streamlines: StreamlineData[]
+  particleCount: number
+  speedMultiplier: number
+}
+
+interface StreamlineParticle {
+  streamlineIndex: number
+  progress: number  // 0-1 along the streamline
+  speed: number     // Particles move at different speeds
+}
+
+/**
+ * Animated particles that flow along existing streamlines.
+ * Creates a sense of wind movement without removing the static streamlines.
+ */
+function AnimatedStreamlineParticles({
+  streamlines,
+  particleCount,
+  speedMultiplier
+}: AnimatedParticlesProps) {
+  const meshRef = useRef<THREE.InstancedMesh>(null)
+  const particlesRef = useRef<StreamlineParticle[]>([])
+
+  // Initialize particles distributed across streamlines
+  useEffect(() => {
+    if (streamlines.length === 0) return
+
+    const particles: StreamlineParticle[] = []
+    for (let i = 0; i < particleCount; i++) {
+      particles.push({
+        streamlineIndex: Math.floor(Math.random() * streamlines.length),
+        progress: Math.random(),
+        speed: 0.3 + Math.random() * 0.7, // Vary speed between 0.3-1.0
+      })
+    }
+    particlesRef.current = particles
+  }, [streamlines, particleCount])
+
+  // Create geometry and temp objects once
+  const { sphereGeometry, dummyMatrix, dummyColor } = useMemo(() => ({
+    sphereGeometry: new THREE.SphereGeometry(1.5, 8, 8),
+    dummyMatrix: new THREE.Matrix4(),
+    dummyColor: new THREE.Color(),
+  }), [])
+
+  useFrame((_, delta) => {
+    if (!meshRef.current || streamlines.length === 0) return
+
+    const mesh = meshRef.current
+    const particles = particlesRef.current
+
+    particles.forEach((particle, i) => {
+      const streamline = streamlines[particle.streamlineIndex]
+      if (!streamline || streamline.points.length < 2) return
+
+      // Advance particle along streamline
+      particle.progress += delta * particle.speed * speedMultiplier * 0.15
+
+      // Wrap around when reaching end
+      if (particle.progress >= 1) {
+        particle.progress = 0
+        // Optionally switch to a different streamline for variety
+        if (Math.random() > 0.7) {
+          particle.streamlineIndex = Math.floor(Math.random() * streamlines.length)
+        }
+      }
+
+      // Interpolate position along streamline points
+      const points = streamline.points
+      const velocities = streamline.velocities
+      const totalSegments = points.length - 1
+      const segmentFloat = particle.progress * totalSegments
+      const segmentIndex = Math.min(Math.floor(segmentFloat), totalSegments - 1)
+      const segmentT = segmentFloat - segmentIndex
+
+      const p1 = points[segmentIndex]
+      const p2 = points[segmentIndex + 1]
+
+      // Lerp between segment points
+      const x = p1.x + (p2.x - p1.x) * segmentT
+      const y = p1.y + (p2.y - p1.y) * segmentT
+      const z = p1.z + (p2.z - p1.z) * segmentT
+
+      // Get velocity for color
+      const v1 = velocities[segmentIndex] || 0.5
+      const v2 = velocities[Math.min(segmentIndex + 1, velocities.length - 1)] || 0.5
+      const velocity = v1 + (v2 - v1) * segmentT
+
+      // Scale based on velocity
+      const scale = 0.8 + velocity * 0.4
+
+      dummyMatrix.makeTranslation(x, y, z)
+      dummyMatrix.scale(new THREE.Vector3(scale, scale, scale))
+      mesh.setMatrixAt(i, dummyMatrix)
+
+      // Color by velocity with glow effect
+      const color = velocityToColor(velocity)
+      dummyColor.copy(color)
+      mesh.setColorAt(i, dummyColor)
+    })
+
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  })
+
+  if (streamlines.length === 0) return null
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[sphereGeometry, undefined, particleCount]}
+      frustumCulled={false}
+    >
+      <meshBasicMaterial
+        vertexColors
+        transparent
+        opacity={0.9}
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </instancedMesh>
+  )
+}
+
+// ============================================================================
 // Wind Field Component
 // ============================================================================
 
@@ -392,6 +529,9 @@ export default function WindField({
   opacity = 0.85,
   arrowSize = 3.0,
   curveSegments = 5,
+  animatedParticles = true,
+  particleCount = 300,
+  particleSpeed = 1.0,
 }: WindFieldProps) {
 
   // Generate all streamlines
@@ -439,6 +579,13 @@ export default function WindField({
     <group name="wind-streamlines">
       <StreamlineLines streamlines={streamlines} opacity={opacity} curveSegments={curveSegments} />
       <ArrowHeads streamlines={streamlines} arrowSize={arrowSize} opacity={opacity} />
+      {animatedParticles && (
+        <AnimatedStreamlineParticles
+          streamlines={streamlines}
+          particleCount={particleCount}
+          speedMultiplier={particleSpeed}
+        />
+      )}
     </group>
   )
 }
