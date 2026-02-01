@@ -51,8 +51,8 @@ class WeightConfig:
 
     @classmethod
     def speed_priority(cls) -> WeightConfig:
-        """Minimize flight time by avoiding headwinds."""
-        return cls(distance=0.3, headwind=0.6, turbulence=0.1)
+        """Minimize flight time - strongly favor shorter paths."""
+        return cls(distance=0.7, headwind=0.25, turbulence=0.05)
 
     @classmethod
     def safety_priority(cls) -> WeightConfig:
