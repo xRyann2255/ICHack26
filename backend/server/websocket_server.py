@@ -49,8 +49,8 @@ except ImportError:
 from ..grid.node import Vector3
 from ..grid.grid_3d import Grid3D
 from ..data.wind_field import WindField
-from ..data.mock_generator import MockDataGenerator
 from ..data.stl_loader import STLLoader, STLMesh, MeshCollisionChecker
+from ..data.vtu_loader import VTULoader
 from ..routing.cost_calculator import CostCalculator, WeightConfig
 from ..routing.dijkstra import DijkstraRouter
 from ..routing.naive_router import NaiveRouter
@@ -127,47 +127,52 @@ class WebSocketServer:
 
         logger.info("Initializing server...")
 
-        gen = MockDataGenerator()
-
         # Resolve STL path - check multiple locations
         stl_path = self.config.stl_path
         if not os.path.isabs(stl_path):
-            # Try relative to current directory first
             if not os.path.exists(stl_path):
-                # Try relative to this file's directory (backend/server/)
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.dirname(os.path.dirname(script_dir))
                 stl_path = os.path.join(project_root, self.config.stl_path)
 
         if not os.path.exists(stl_path):
-            raise FileNotFoundError(f"STL file not found: {stl_path}. The southken.stl file is required.")
+            raise FileNotFoundError(f"STL file not found: {stl_path}")
 
-        # Resolve VTU path if provided
+        # Resolve VTU path
         vtu_path = self.config.vtu_path
         if vtu_path and not os.path.isabs(vtu_path):
-            # Try relative to current directory first
             if not os.path.exists(vtu_path):
-                # Try relative to project root
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.dirname(os.path.dirname(script_dir))
                 vtu_path = os.path.join(project_root, self.config.vtu_path)
             if not os.path.exists(vtu_path):
-                logger.warning(f"VTU file not found: {vtu_path}, using mock wind data")
-                vtu_path = None
+                raise FileNotFoundError(f"VTU file not found: {vtu_path}")
 
-        # Load scene from STL file
-        logger.info(f"Loading scene from STL: {stl_path}")
-        if vtu_path:
-            logger.info(f"Using CFD wind data from VTU: {vtu_path}")
-        else:
-            logger.info("Using mock wind data (no VTU file specified)")
+        # Load STL mesh
+        logger.info(f"Loading STL: {stl_path}")
+        self.mesh = STLLoader.load_stl(stl_path, convert_coords=True, center_xy=True, ground_at_zero=True)
 
-        self.mesh, self.wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
-            stl_path,
-            wind_resolution=self.config.wind_resolution,
-            flight_ceiling=50.0,
-            margin=50.0,
-            vtu_path=vtu_path
+        # Calculate scene bounds from mesh
+        margin = 50.0
+        flight_ceiling = 50.0
+        bounds_min = Vector3(
+            self.mesh.min_bounds[0] - margin,
+            0,
+            self.mesh.min_bounds[2] - margin
+        )
+        bounds_max = Vector3(
+            self.mesh.max_bounds[0] + margin,
+            self.mesh.max_bounds[1] + flight_ceiling,
+            self.mesh.max_bounds[2] + margin
+        )
+
+        # Load wind field from VTU
+        logger.info(f"Loading VTU wind data: {vtu_path}")
+        self.wind_field = VTULoader.load_and_normalize(
+            vtu_path,
+            scene_bounds_min=bounds_min,
+            scene_bounds_max=bounds_max,
+            resolution=self.config.wind_resolution
         )
         # Take every 10 points from the main wind field (N, 3)
         N = 10
