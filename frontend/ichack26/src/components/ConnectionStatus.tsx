@@ -71,17 +71,17 @@ export default function ConnectionStatus() {
     if (!sceneBounds) {
       // Fallback defaults if no bounds loaded yet
       return {
-        simStart: [180, 50, 180] as [number, number, number],
-        simEnd: [20, 50, 20] as [number, number, number],
+        simStart: [170, 50, 170] as [number, number, number],
+        simEnd: [30, 50, 30] as [number, number, number],
       };
     }
 
     const { min, max, size } = sceneBounds;
     // Flying altitude: 70% of scene height, clamped to reasonable range
     const flyAltitude = Math.min(Math.max(min[1] + size[1] * 0.7, 50), max[1] - 10);
-    // Margin from edges (10% of scene size or 50m, whichever is smaller)
-    const marginX = Math.min(size[0] * 0.1, 50);
-    const marginZ = Math.min(size[2] * 0.1, 50);
+    // Margin from edges (12% of scene size or 55m, whichever is smaller)
+    const marginX = Math.min(size[0] * 0.12, 55);
+    const marginZ = Math.min(size[2] * 0.12, 55);
 
     return {
       simStart: [

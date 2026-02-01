@@ -45,20 +45,20 @@ const DEFAULT_PRESETS: RoutePreset[] = [
   {
     name: 'Cross City',
     description: 'Diagonal path across the scene',
-    start: { x: 180, y: 180, z: 50 },
-    end: { x: 20, y: 20, z: 50 },
+    start: { x: 170, y: 50, z: 170 },
+    end: { x: 30, y: 50, z: 30 },
   },
   {
     name: 'East-West',
     description: 'Horizontal path through center',
-    start: { x: 180, y: 100, z: 50 },
-    end: { x: 20, y: 100, z: 50 },
+    start: { x: 170, y: 50, z: 100 },
+    end: { x: 30, y: 50, z: 100 },
   },
   {
     name: 'North-South',
     description: 'Vertical path through center',
-    start: { x: 100, y: 180, z: 50 },
-    end: { x: 100, y: 20, z: 50 },
+    start: { x: 100, y: 50, z: 170 },
+    end: { x: 100, y: 50, z: 30 },
   },
 ];
 
@@ -169,8 +169,8 @@ export default function CollapsibleSidebar({
   }, [onWindDirectionChange]);
 
   // Control Panel state
-  const [startPos, setStartPos] = useState<Position>({ x: 180, y: 180, z: 50 });
-  const [endPos, setEndPos] = useState<Position>({ x: 20, y: 20, z: 50 });
+  const [startPos, setStartPos] = useState<Position>({ x: 170, y: 50, z: 170 });
+  const [endPos, setEndPos] = useState<Position>({ x: 30, y: 50, z: 30 });
   const [routeType, _setRouteType] = useState<RouteType>('both');
   void _setRouteType; // Reserved for future use
 
@@ -179,8 +179,8 @@ export default function CollapsibleSidebar({
     ? (() => {
       const { min, max, center, size } = sceneBounds;
       const flyAltitude = Math.min(Math.max(min[1] + size[1] * 0.7, 50), max[1] - 10);
-      const marginX = Math.min(size[0] * 0.1, 50);
-      const marginZ = Math.min(size[2] * 0.1, 50);
+      const marginX = Math.min(size[0] * 0.12, 55);
+      const marginZ = Math.min(size[2] * 0.12, 55);
       return [
         {
           name: 'Cross City',
