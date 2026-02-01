@@ -238,26 +238,13 @@ class MockDataGenerator:
 
         # Load wind field from VTU if provided, otherwise generate mock
         if vtu_path:
-            vtu_start = time.time()
             print(f"Loading CFD wind field from {vtu_path}...")
-            # The STL mesh is centered horizontally (center_xy=True), so the
-            # scene center is at (0, 0) in XZ plane. We need to align the VTU
-            # data with this centered coordinate system.
-            offset = VTULoader.compute_alignment_offset(
+            wind_field = VTULoader.load_and_normalize(
                 vtu_path,
-                target_center_x=0.0,  # Mesh is centered at X=0
-                target_center_z=0.0,  # Mesh is centered at Z=0
-                convert_coords=True
+                scene_bounds_min=bounds_min,
+                scene_bounds_max=bounds_max,
+                resolution=wind_resolution
             )
-            wind_field = VTULoader.load_vtu(
-                vtu_path,
-                bounds_min,
-                bounds_max,
-                resolution=wind_resolution,
-                convert_coords=True,
-                offset=offset
-            )
-            print(f"VTU loading complete in {time.time() - vtu_start:.2f}s")
         else:
             # Generate mock wind field
             print(f"Generating mock wind field (resolution={wind_resolution}m)...")

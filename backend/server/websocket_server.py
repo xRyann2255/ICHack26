@@ -261,29 +261,24 @@ class WebSocketServer:
             },
         }
 
-    def get_wind_field_data(self, downsample: int = 1, precision: int = 2) -> Dict[str, Any]:
+    def get_wind_field_data(self, precision: int = 2) -> Dict[str, Any]:
         """
         Get full wind field data for client to render streamlines.
 
+        No downsampling - returns all wind vectors at full resolution.
+
         Args:
-            downsample: Take every Nth sample (1 = full resolution, 2 = half, etc.)
             precision: Decimal places for rounding (reduces JSON size)
 
         Returns wind vectors and turbulence for every cell in the grid.
         """
         wf = self.wind_field
 
-        # Optionally downsample for visualization
-        if downsample > 1:
-            wind_data = wf.wind_data[::downsample, ::downsample, ::downsample]
-            turb_data = wf.turbulence_data[::downsample, ::downsample, ::downsample]
-            shape = list(wind_data.shape[:3])
-            resolution = self.config.wind_resolution * downsample
-        else:
-            wind_data = wf.wind_data
-            turb_data = wf.turbulence_data
-            shape = [wf.nx, wf.ny, wf.nz]
-            resolution = self.config.wind_resolution
+        # Use full resolution - no downsampling
+        wind_data = wf.wind_data
+        turb_data = wf.turbulence_data
+        shape = [wf.nx, wf.ny, wf.nz]
+        resolution = self.config.wind_resolution
 
         # Round to reduce precision and JSON size
         wind_flat = np.round(wind_data.reshape(-1, 3), precision).tolist()
@@ -296,7 +291,6 @@ class WebSocketServer:
             },
             "resolution": resolution,
             "shape": shape,
-            "downsample": downsample,
             # Flatten wind data to list of [vx, vy, vz] for each cell
             # Order: x varies fastest, then y, then z (C-order)
             "wind_vectors": wind_flat,
@@ -333,22 +327,19 @@ class WebSocketServer:
             })
 
         elif msg_type == "get_wind_field":
-            # Send full wind field data for streamline rendering
-            # Optional: downsample=2 takes every 2nd sample (reduces data by 8x)
-            downsample = data.get("downsample", 1)
-            logger.info(f"Sending wind field data (downsample={downsample})...")
+            # Send full wind field data for streamline rendering (no downsampling)
+            logger.info("Sending wind field data (full resolution)...")
             await self.send_json(websocket, {
                 "type": "wind_field",
-                "data": self.get_wind_field_data(downsample=downsample)
+                "data": self.get_wind_field_data()
             })
             logger.info("Wind field data sent")
 
         elif msg_type == "get_all":
-            # Send both scene and wind field in one response
-            downsample = data.get("downsample", 1)
-            logger.info(f"Sending full scene data with wind field (downsample={downsample})...")
+            # Send both scene and wind field in one response (no downsampling)
+            logger.info("Sending full scene data with wind field (full resolution)...")
             scene_data = self.get_scene_info()
-            scene_data["wind_field"] = self.get_wind_field_data(downsample=downsample)
+            scene_data["wind_field"] = self.get_wind_field_data()
             await self.send_json(websocket, {
                 "type": "full_scene",
                 "data": scene_data

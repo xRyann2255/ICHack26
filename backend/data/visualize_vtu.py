@@ -1,14 +1,10 @@
 """
 Visualize VTU wind field data using PyVista.
 
-This script loads a VTU file containing CFD wind simulation data and
-displays it as 3D vector glyphs (arrows) showing wind direction and magnitude.
+Shows the raw wind vectors from an OpenFOAM VTU file.
 
 Usage:
-    python -m backend.data.visualize_vtu [path_to_vtu_file] [max_arrows]
-
-If no path is provided, defaults to internal.vtu in the project root.
-max_arrows defaults to 10000 for smooth rendering.
+    python -m backend.data.visualize_vtu [path_to_vtu_file]
 """
 
 import os
@@ -17,173 +13,166 @@ import pyvista as pv
 import numpy as np
 
 
-def downsample_wind_field(points: np.ndarray, velocity: np.ndarray, max_arrows: int) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample wind field by averaging vectors in spatial bins.
+def load_vtu(vtu_path: str):
+    """Load VTU file and extract points + velocity."""
+    print(f"Loading: {vtu_path}")
+    mesh = pv.read(vtu_path)
 
-    Args:
-        points: (N, 3) array of point positions
-        velocity: (N, 3) array of velocity vectors
-        max_arrows: Maximum number of arrows to render
+    print(f"\nMesh info:")
+    print(f"  Type: {type(mesh).__name__}")
+    print(f"  Points: {mesh.n_points:,}")
+    print(f"  Cells: {mesh.n_cells:,}")
+    print(f"  Point data: {list(mesh.point_data.keys())}")
+    print(f"  Cell data: {list(mesh.cell_data.keys())}")
 
-    Returns:
-        Tuple of (downsampled_points, downsampled_velocity)
-    """
-    n_points = len(points)
+    # Get velocity - prefer cell_data (more common in OpenFOAM)
+    if 'U' in mesh.cell_data:
+        print("\nUsing cell_data['U']")
+        points = mesh.cell_centers().points.copy()
+        velocity = mesh.cell_data['U'].copy()
+    elif 'U' in mesh.point_data:
+        print("\nUsing point_data['U']")
+        points = mesh.points.copy()
+        velocity = mesh.point_data['U'].copy()
+    else:
+        raise KeyError(f"No 'U' field found")
 
-    if n_points <= max_arrows:
-        return points, velocity
-
-    # Calculate how many bins we need per dimension
-    # We want roughly max_arrows total bins, so bins_per_dim^3 ≈ max_arrows
-    bins_per_dim = int(np.ceil(max_arrows ** (1/3)))
-
-    # Get bounds
-    mins = points.min(axis=0)
-    maxs = points.max(axis=0)
-    ranges = maxs - mins
-
-    # Avoid division by zero for flat dimensions
-    ranges = np.where(ranges == 0, 1, ranges)
-
-    # Compute bin indices for each point
-    normalized = (points - mins) / ranges  # 0 to 1
-    bin_indices = np.clip((normalized * bins_per_dim).astype(int), 0, bins_per_dim - 1)
-
-    # Create unique bin key for each point
-    bin_keys = bin_indices[:, 0] + bin_indices[:, 1] * bins_per_dim + bin_indices[:, 2] * bins_per_dim * bins_per_dim
-
-    # Find unique bins and average points/velocities within each
-    unique_bins = np.unique(bin_keys)
-
-    avg_points = []
-    avg_velocities = []
-
-    for bin_key in unique_bins:
-        mask = bin_keys == bin_key
-        avg_points.append(points[mask].mean(axis=0))
-        avg_velocities.append(velocity[mask].mean(axis=0))
-
-    return np.array(avg_points), np.array(avg_velocities)
+    return points, velocity, mesh
 
 
-def visualize_vtu(vtu_path: str, max_arrows: int = 10000) -> None:
-    """
-    Load and visualize a VTU file with wind vectors.
+def convert_to_scene_coords(points, velocity):
+    """Convert from OpenFOAM (Z-up) to scene (Y-up) coordinates."""
+    # OpenFOAM: X, Y, Z where Z is up
+    # Scene: X, Y, Z where Y is up
+    # Transform: scene_x = of_x, scene_y = of_z, scene_z = -of_y
+    scene_points = np.column_stack([
+        points[:, 0],
+        points[:, 2],
+        -points[:, 1],
+    ])
+    scene_velocity = np.column_stack([
+        velocity[:, 0],
+        velocity[:, 2],
+        -velocity[:, 1],
+    ])
+    return scene_points, scene_velocity
 
-    Args:
-        vtu_path: Path to the VTU file
-        max_arrows: Maximum number of arrows to render (default 10000)
-    """
+
+def normalize_to_bounds(points, target_min, target_max):
+    """Scale points to fit target bounds."""
+    src_min = points.min(axis=0)
+    src_max = points.max(axis=0)
+    src_size = src_max - src_min
+    tgt_size = target_max - target_min
+
+    scale = np.where(src_size > 0.01, tgt_size / src_size, 1.0)
+    offset = target_min - src_min * scale
+
+    return points * scale + offset, scale, offset
+
+
+def visualize_vtu(vtu_path: str):
+    """Load and visualize VTU file."""
     if not os.path.exists(vtu_path):
-        print(f"Error: VTU file not found: {vtu_path}")
+        print(f"Error: File not found: {vtu_path}")
         sys.exit(1)
 
-    print(f"Loading VTU file: {vtu_path}")
+    # Load raw data
+    points, velocity, mesh = load_vtu(vtu_path)
 
-    # Load the internal mesh
-    mesh = pv.read(vtu_path)
-    print(mesh)
+    print(f"\nShapes: points {points.shape}, velocity {velocity.shape}")
 
-    # Get coordinates of points
-    points = mesh.points  # shape: (N, 3)
+    # Show OpenFOAM bounds
+    print(f"\n=== OpenFOAM Coordinates (Z-up) ===")
+    print(f"X: [{points[:, 0].min():.1f}, {points[:, 0].max():.1f}]")
+    print(f"Y: [{points[:, 1].min():.1f}, {points[:, 1].max():.1f}]")
+    print(f"Z: [{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
 
-    # Get velocity
-    velocity = mesh.cell_data['U']  # shape: (N, 3)
+    # Convert to scene coords
+    points, velocity = convert_to_scene_coords(points, velocity)
 
-    print("Original points shape:", points.shape)
-    print("Original velocity shape:", velocity.shape)
+    print(f"\n=== Scene Coordinates (Y-up) ===")
+    print(f"X: [{points[:, 0].min():.1f}, {points[:, 0].max():.1f}]")
+    print(f"Y: [{points[:, 1].min():.1f}, {points[:, 1].max():.1f}]")
+    print(f"Z: [{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
 
-    # Print bounds
-    print(f"X bounds: [{points[:, 0].min():.1f}, {points[:, 0].max():.1f}]")
-    print(f"Y bounds: [{points[:, 1].min():.1f}, {points[:, 1].max():.1f}]")
-    print(f"Z bounds: [{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
-
-    # Print velocity stats
+    # Velocity stats
     speed = np.linalg.norm(velocity, axis=1)
-    print(f"Speed range: [{speed.min():.2f}, {speed.max():.2f}] m/s")
-    print(f"Mean speed: {speed.mean():.2f} m/s")
+    print(f"\n=== Velocity ===")
+    print(f"Speed: [{speed.min():.2f}, {speed.max():.2f}] m/s")
+    print(f"Mean: {speed.mean():.2f} m/s")
 
-    # Check if vectors are suspiciously uniform (all pointing same direction)
-    nonzero_mask = speed > 0.01  # Ignore near-zero vectors
-    if nonzero_mask.sum() > 0:
-        nonzero_vel = velocity[nonzero_mask]
-        nonzero_speed = speed[nonzero_mask]
-        normalized = nonzero_vel / nonzero_speed[:, np.newaxis]
+    # Sample mean direction
+    nonzero = speed > 0.01
+    if nonzero.sum() > 0:
+        dirs = velocity[nonzero] / speed[nonzero, np.newaxis]
+        mean_dir = dirs.mean(axis=0)
+        mean_dir = mean_dir / np.linalg.norm(mean_dir)
+        print(f"Mean direction: [{mean_dir[0]:.2f}, {mean_dir[1]:.2f}, {mean_dir[2]:.2f}]")
 
-        # Compute mean direction
-        mean_dir = normalized.mean(axis=0)
-        mean_dir_norm = np.linalg.norm(mean_dir)
+    # Create visualization
+    print(f"\n=== Rendering {len(points):,} vectors ===")
 
-        # If mean direction has high magnitude, vectors are very aligned
-        # (random directions would average to ~0, uniform directions average to ~1)
-        if mean_dir_norm > 0.95:
-            mean_dir_unit = mean_dir / mean_dir_norm
-            print(f"\n⚠️  WARNING: Vectors are suspiciously uniform!")
-            print(f"    Mean direction magnitude: {mean_dir_norm:.3f} (1.0 = all identical)")
-            print(f"    Mean direction: [{mean_dir_unit[0]:.2f}, {mean_dir_unit[1]:.2f}, {mean_dir_unit[2]:.2f}]")
-        else:
-            # Also check variance of directions
-            dir_std = normalized.std(axis=0)
-            print(f"Direction variance: [{dir_std[0]:.3f}, {dir_std[1]:.3f}, {dir_std[2]:.3f}]")
-            if dir_std.max() < 0.1:
-                print(f"\n⚠️  WARNING: Very low direction variance - vectors may be too uniform!")
+    pdata = pv.PolyData(points)
+    pdata['velocity'] = velocity
+    pdata['speed'] = speed
 
-    # Downsample if needed
-    n_points = len(points)
-    if n_points > max_arrows:
-        print(f"\nDownsampling from {n_points:,} to ~{max_arrows:,} arrows...")
-        ds_points, ds_velocity = downsample_wind_field(points, velocity, max_arrows)
-        print(f"Downsampled to {len(ds_points):,} arrows")
-    else:
-        ds_points, ds_velocity = points, velocity
+    # Arrow scale - small arrows
+    mean_speed = max(speed.mean(), 0.1)
+    bounds_size = points.max(axis=0) - points.min(axis=0)
+    avg_dim = bounds_size.mean()
+    arrow_scale = (avg_dim * 0.005) / mean_speed
 
-    # Create a point dataset with vectors and draw arrow glyphs
-    pdata = pv.PolyData(ds_points)
-    pdata['vectors'] = ds_velocity
-
-    # Scale arrows relative to mesh size
-    b = mesh.bounds  # (xmin, xmax, ymin, ymax, zmin, zmax)
-    diag = np.sqrt((b[1] - b[0])**2 + (b[3] - b[2])**2 + (b[5] - b[4])**2)
-    scale = diag * 0.03 if diag > 0 else 1.0
+    print(f"Arrow scale: {arrow_scale:.6f}")
 
     glyphs = pdata.glyph(
-        orient='vectors',
-        scale='vectors',
-        factor=scale * 0.1,
-        geom=pv.Arrow()
+        orient='velocity',
+        scale='speed',
+        factor=arrow_scale,
+        geom=pv.Arrow(tip_length=0.25, tip_radius=0.1, shaft_radius=0.03)
     )
 
-    # Visualize mesh and vector glyphs
+    # Plot
     plotter = pv.Plotter()
-    plotter.add_mesh(mesh, opacity=0.25, color='lightgray', show_edges=True)
-    plotter.add_mesh(glyphs, color='red')
+
+    # Bounding box
+    bounds = [
+        points[:, 0].min(), points[:, 0].max(),
+        points[:, 1].min(), points[:, 1].max(),
+        points[:, 2].min(), points[:, 2].max(),
+    ]
+    plotter.add_mesh(pv.Box(bounds=bounds), opacity=0.05, color='gray', show_edges=True)
+
+    # Arrows
+    plotter.add_mesh(
+        glyphs,
+        scalars='speed',
+        cmap='coolwarm',
+        show_scalar_bar=True,
+        scalar_bar_args={'title': 'Speed (m/s)'}
+    )
+
     plotter.add_axes()
-    plotter.add_bounding_box()
+    plotter.add_text(
+        f"{os.path.basename(vtu_path)}\n"
+        f"{len(points):,} vectors\n"
+        f"Speed: {speed.min():.1f}-{speed.max():.1f} m/s",
+        position='upper_left',
+        font_size=10
+    )
+
     plotter.show()
 
 
 def main():
-    """Main entry point."""
-    # Determine VTU file path
     if len(sys.argv) > 1:
         vtu_path = sys.argv[1]
     else:
-        # Default to internal.vtu in project root
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(script_dir))
         vtu_path = os.path.join(project_root, "internal.vtu")
 
-    # Optional max_arrows parameter
-    max_arrows = 10000  # Default
-    if len(sys.argv) > 2:
-        try:
-            max_arrows = int(sys.argv[2])
-        except ValueError:
-            print(f"Warning: Invalid max_arrows '{sys.argv[2]}', using default {max_arrows}")
-
-    print(f"Max arrows: {max_arrows:,}")
-    visualize_vtu(vtu_path, max_arrows)
+    visualize_vtu(vtu_path)
 
 
 if __name__ == "__main__":
