@@ -144,10 +144,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const periodicReconnectRef = useRef<number | null>(null);
   const playbackRef = useRef(playback); // Keep ref in sync for use in callbacks
+  const statusRef = useRef(status); // Keep status ref in sync for interval callback
+  const connectRef = useRef<() => void>(() => {}); // Ref for connect function
 
-  // Keep playback ref in sync
+  // Keep refs in sync
   playbackRef.current = playback;
+  statusRef.current = status;
 
   // ============================================================================
   // Message Handler
@@ -334,11 +338,20 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     wsRef.current = ws;
   }, [url, reconnectInterval, maxReconnectAttempts, handleMessage]);
 
+  // Keep connect ref in sync
+  connectRef.current = connect;
+
   const disconnect = useCallback(() => {
     // Clear reconnect timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
+    }
+
+    // Clear periodic reconnect interval
+    if (periodicReconnectRef.current) {
+      clearInterval(periodicReconnectRef.current);
+      periodicReconnectRef.current = null;
     }
 
     // Close connection
@@ -440,6 +453,39 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       disconnect();
     };
   }, [autoConnect, connect, disconnect]);
+
+  // Periodic reconnection check - keeps trying if disconnected
+  useEffect(() => {
+    if (!autoConnect) return;
+
+    // Clear any existing interval first
+    if (periodicReconnectRef.current) {
+      clearInterval(periodicReconnectRef.current);
+    }
+
+    periodicReconnectRef.current = window.setInterval(() => {
+      // Use refs to get current values (avoids stale closures)
+      const currentStatus = statusRef.current;
+
+      // Only attempt reconnect if disconnected or in error state
+      if (
+        (currentStatus === 'disconnected' || currentStatus === 'error') &&
+        !wsRef.current &&
+        !reconnectTimeoutRef.current
+      ) {
+        console.log('[WS] Periodic reconnect check - attempting connection...');
+        reconnectAttempts.current = 0; // Reset attempts for periodic retry
+        connectRef.current();
+      }
+    }, reconnectInterval);
+
+    return () => {
+      if (periodicReconnectRef.current) {
+        clearInterval(periodicReconnectRef.current);
+        periodicReconnectRef.current = null;
+      }
+    };
+  }, [autoConnect, reconnectInterval]);
 
   // ============================================================================
   // Return

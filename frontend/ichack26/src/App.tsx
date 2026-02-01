@@ -256,17 +256,15 @@ function App() {
     return <HomePage onPlanRoute={handlePlanRoute} />
   }
 
-  if (appState === 'loading') {
-    return (
-      <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
-        <SceneLoader onSceneReady={() => setAppState('ready')} />
-      </SceneProvider>
-    )
-  }
-
+  // Single SceneProvider wraps both loading and ready states
+  // This preserves the WebSocket connection and scene data across the transition
   return (
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
-      <AppContent />
+      {appState === 'loading' ? (
+        <SceneLoader onSceneReady={() => setAppState('ready')} />
+      ) : (
+        <AppContent />
+      )}
     </SceneProvider>
   )
 }
