@@ -21,9 +21,9 @@ const STATUS_COLORS: Record<ConnectionStatusType, string> = {
 };
 
 const STATUS_LABELS: Record<ConnectionStatusType, string> = {
-  disconnected: 'Tracer Disconnected',
+  disconnected: 'Tracr Disconnected',
   connecting: 'Connecting...',
-  connected: 'Tracer Connected',
+  connected: 'Tracr Connected',
   error: 'Error',
 };
 
