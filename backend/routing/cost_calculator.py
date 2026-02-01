@@ -35,10 +35,11 @@ class WeightConfig:
 
     Modify these presets or create new ones to change routing behavior.
     All weights should be non-negative. They are normalized internally.
+
+    Focus: Efficiency and time optimization only (distance + headwind).
     """
     distance: float = 1.0      # Base distance cost
     headwind: float = 1.0      # Penalty for flying into wind
-    turbulence: float = 1.0    # Penalty for turbulent areas
 
     # Additional weights can be added here:
     # altitude: float = 0.0    # Prefer lower/higher altitude
@@ -46,28 +47,28 @@ class WeightConfig:
 
     def __post_init__(self):
         """Validate weights."""
-        if self.distance < 0 or self.headwind < 0 or self.turbulence < 0:
+        if self.distance < 0 or self.headwind < 0:
             raise ValueError("Weights must be non-negative")
 
     @classmethod
     def speed_priority(cls) -> WeightConfig:
         """Minimize flight time - strongly favor shorter paths."""
-        return cls(distance=0.7, headwind=0.25, turbulence=0.05)
-
-    @classmethod
-    def safety_priority(cls) -> WeightConfig:
-        """Minimize crash risk by avoiding turbulence."""
-        return cls(distance=0.2, headwind=0.2, turbulence=0.6)
+        return cls(distance=0.7, headwind=0.3)
 
     @classmethod
     def balanced(cls) -> WeightConfig:
-        """Equal consideration of all factors."""
-        return cls(distance=0.34, headwind=0.33, turbulence=0.33)
+        """Balanced consideration of distance and wind."""
+        return cls(distance=0.5, headwind=0.5)
 
     @classmethod
     def distance_only(cls) -> WeightConfig:
         """Shortest path (for naive comparison)."""
-        return cls(distance=1.0, headwind=0.0, turbulence=0.0)
+        return cls(distance=1.0, headwind=0.0)
+
+    @classmethod
+    def wind_optimized(cls) -> WeightConfig:
+        """Strongly favor wind assistance over distance."""
+        return cls(distance=0.3, headwind=0.7)
 
 
 # =============================================================================
@@ -187,52 +188,6 @@ class HeadwindCost(CostComponent):
             return -self.tailwind_benefit * tailwind_strength * distance
 
 
-class TurbulenceCost(CostComponent):
-    """
-    Cost for flying through turbulent areas.
-
-    High turbulence increases crash risk and requires more energy
-    for stabilization.
-
-    Modify this class to change turbulence sensitivity.
-    """
-
-    def __init__(self, threshold: float = 0.2, exponent: float = 2.0):
-        """
-        Args:
-            threshold: Turbulence below this is considered safe (no extra cost)
-            exponent: How sharply cost increases above threshold
-        """
-        self.threshold = threshold
-        self.exponent = exponent
-
-    @property
-    def name(self) -> str:
-        return "turbulence"
-
-    def compute(
-        self,
-        start_pos: Vector3,
-        end_pos: Vector3,
-        wind_field: 'WindField',
-        distance: float
-    ) -> float:
-        # Get turbulence at both endpoints and midpoint
-        turb_start = wind_field.get_turbulence_at(start_pos)
-        turb_end = wind_field.get_turbulence_at(end_pos)
-
-        midpoint = (start_pos + end_pos) * 0.5
-        turb_mid = wind_field.get_turbulence_at(midpoint)
-
-        # Use maximum turbulence along edge
-        max_turb = max(turb_start, turb_end, turb_mid)
-
-        # Apply threshold and exponent
-        if max_turb <= self.threshold:
-            return 0.0
-
-        excess = max_turb - self.threshold
-        return (excess ** self.exponent) * distance
 
 
 # =============================================================================
@@ -273,11 +228,10 @@ class CostCalculator:
         self.wind_field = wind_field
         self.weights = weights or WeightConfig.balanced()
 
-        # Default components - modify this list to change what factors are considered
+        # Default components - efficiency focused (distance + headwind only)
         self.components = components or [
             DistanceCost(),
             HeadwindCost(tailwind_benefit=0.5),
-            TurbulenceCost(threshold=0.2, exponent=2.0),
         ]
 
         # Build component lookup
@@ -550,16 +504,10 @@ class CostCalculator:
         # Get weight values
         w_distance = self.get_weight("distance")
         w_headwind = self.get_weight("headwind")
-        w_turbulence = self.get_weight("turbulence")
 
-        # Get turbulence parameters from component
-        turb_threshold = 0.2
-        turb_exponent = 2.0
+        # Get headwind parameters from component
         tailwind_benefit = 0.5
         for comp in self.components:
-            if comp.name == "turbulence":
-                turb_threshold = getattr(comp, 'threshold', 0.2)
-                turb_exponent = getattr(comp, 'exponent', 2.0)
             if comp.name == "headwind":
                 tailwind_benefit = getattr(comp, 'tailwind_benefit', 0.5)
 
@@ -612,26 +560,6 @@ class CostCalculator:
                     -tailwind_benefit * wind_alignment * distances  # Tailwind benefit (negative cost)
                 )
                 total_costs += w_headwind * headwind_costs
-
-            # Turbulence cost (vectorized)
-            if w_turbulence > 0:
-                # Get turbulence at start, end, and midpoint (use GPU if available)
-                if gpu_enabled:
-                    turb_start = self.wind_field.get_turbulence_batch_gpu(start_positions)
-                    turb_end = self.wind_field.get_turbulence_batch_gpu(end_positions)
-                    turb_mid = self.wind_field.get_turbulence_batch_gpu(midpoints)
-                else:
-                    turb_start = self.wind_field.get_turbulence_batch(start_positions)
-                    turb_end = self.wind_field.get_turbulence_batch(end_positions)
-                    turb_mid = self.wind_field.get_turbulence_batch(midpoints)
-
-                # Max turbulence along edge
-                max_turb = np.maximum(np.maximum(turb_start, turb_end), turb_mid)
-
-                # Apply threshold and exponent
-                excess = np.maximum(0, max_turb - turb_threshold)
-                turb_costs = (excess ** turb_exponent) * distances
-                total_costs += w_turbulence * turb_costs
 
             # Ensure non-negative costs
             total_costs = np.maximum(0.0, total_costs)

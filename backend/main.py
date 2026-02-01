@@ -112,12 +112,12 @@ def setup_routers(
     grid = Grid3D(bounds_min, bounds_max, resolution=config.scene.grid_resolution)
     print(f"   Grid: {grid.nx}x{grid.ny}x{grid.nz} = {grid.total_nodes} nodes")
 
-    # Get weight config
+    # Get weight config (efficiency focused: distance + headwind only)
     weight_presets = {
         "speed_priority": WeightConfig.speed_priority,
-        "safety_priority": WeightConfig.safety_priority,
         "balanced": WeightConfig.balanced,
         "distance_only": WeightConfig.distance_only,
+        "wind_optimized": WeightConfig.wind_optimized,
     }
     weight_func = weight_presets.get(config.routing.weight_preset, WeightConfig.speed_priority)
     weights = weight_func()
@@ -324,7 +324,7 @@ Presets: demo, small, large
 
     parser.add_argument(
         "--weights",
-        choices=["speed_priority", "safety_priority", "balanced"],
+        choices=["speed_priority", "balanced", "wind_optimized"],
         default="speed_priority",
         help="Weight preset for routing (default: speed_priority)"
     )

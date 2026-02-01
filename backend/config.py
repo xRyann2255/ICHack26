@@ -46,7 +46,7 @@ class BuildingConfig:
 @dataclass
 class RoutingConfig:
     """Routing algorithm configuration."""
-    weight_preset: str = "speed_priority"  # speed_priority, safety_priority, balanced
+    weight_preset: str = "speed_priority"  # speed_priority, balanced, wind_optimized
     capture_interval: int = 20  # exploration frame capture interval
     path_smoothing_points: int = 10  # points per segment for smoothing
 

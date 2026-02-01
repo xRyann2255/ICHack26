@@ -4,7 +4,7 @@
 
 A hackathon project for **Hudson River Trading: Best Use of Data for Predictions & Decision-Making**.
 
-We use CFD wind simulation data around buildings to compute optimized drone delivery routes that account for wind conditions, turbulence, and safety factors.
+We use CFD wind simulation data around buildings to compute optimized drone delivery routes that account for wind conditions for maximum efficiency.
 
 **Core Thesis:** Data (CFD wind field) → Prediction (risk/cost modeling) → Decision (optimal route selection)
 
@@ -30,7 +30,7 @@ python -m backend.server.websocket_server --port 8765 --frame-delay 0.05 --vtu i
 - `--wind-resolution`: Wind field grid resolution in meters (default: 10)
 - `--grid-resolution`: Pathfinding grid resolution in meters (default: 20)
 
-**Weight configs:** Speed (`w1=0.3, w2=0.6, w3=0.1`), Safety (`w1=0.2, w2=0.2, w3=0.6`), Balanced (`w1=0.33, w2=0.33, w3=0.34`)
+**Weight configs:** Speed (`distance=0.7, headwind=0.3`), Balanced (`distance=0.5, headwind=0.5`), Wind-Optimized (`distance=0.3, headwind=0.7`)
 
 ### Frontend
 
