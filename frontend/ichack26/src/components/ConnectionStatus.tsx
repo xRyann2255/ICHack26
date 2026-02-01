@@ -161,8 +161,8 @@ export default function ConnectionStatus() {
           <div style={styles.dataRow}>
             <span style={styles.dataLabel}>Scene:</span>
             <span style={sceneData ? styles.dataLoaded : styles.dataNotLoaded}>
-              {sceneData 
-                ? 'Loaded' 
+              {sceneData
+                ? 'Loaded'
                 : 'Not loaded'
               }
             </span>
@@ -187,8 +187,8 @@ export default function ConnectionStatus() {
             disabled={simulation.status === 'loading' || simulation.status === 'simulating'}
           >
             {simulation.status === 'loading' ? 'Loading...' :
-             simulation.status === 'simulating' ? 'Simulating...' :
-             'Start Simulation'}
+              simulation.status === 'simulating' ? 'Simulating...' :
+                'Start Simulation'}
           </button>
 
           {/* Simulation status */}
@@ -199,14 +199,14 @@ export default function ConnectionStatus() {
                 <span style={styles.simStatusValue}>{simulation.status}</span>
               </div>
             </div>
-            
+
           )}
-           
+
         </div>
       )}
-     
+
     </div>
-    
+
   );
 }
 
@@ -219,15 +219,16 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'absolute',
     top: 16,
     left: 16,
-    padding: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
     color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: 14,
+    fontSize: 12,
     minWidth: 220,
     maxWidth: 280,
     zIndex: 1000,
+    backdropFilter: 'blur(5px)',
   },
   statusRow: {
     display: 'flex',
@@ -236,12 +237,13 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 8,
   },
   statusDot: {
-    width: 12,
-    height: 12,
+    width: 10,
+    height: 10,
     borderRadius: '50%',
   },
   statusLabel: {
     fontWeight: 600,
+    fontSize: 12,
   },
   activeSim: {
     alignContent: 'center',
@@ -249,30 +251,29 @@ const styles: Record<string, React.CSSProperties> = {
   },
   error: {
     color: '#ff6b6b',
-    fontSize: 12,
+    fontSize: 11,
     marginBottom: 8,
-    padding: 8,
+    padding: 6,
     backgroundColor: 'rgba(255, 107, 107, 0.1)',
     borderRadius: 4,
   },
   buttonRow: {
     display: 'flex',
-    gap: 8,
+    gap: 6,
     marginTop: 8,
   },
   button: {
-    padding: '6px 12px',
-    border: '1px solid #555',
+    padding: '6px 10px',
+    border: 'none',
     borderRadius: 4,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#fff',
     cursor: 'pointer',
-    fontSize: 12,
+    fontSize: 11,
     transition: 'background-color 0.2s',
   },
   primaryButton: {
     backgroundColor: '#4a9eff',
-    borderColor: '#4a9eff',
   },
   dataStatus: {
     marginTop: 12,
@@ -283,7 +284,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     marginBottom: 4,
-    fontSize: 12,
+    fontSize: 11,
   },
   dataLabel: {
     color: '#888',
@@ -303,13 +304,14 @@ const styles: Record<string, React.CSSProperties> = {
   sectionTitle: {
     fontWeight: 600,
     marginBottom: 8,
-    color: '#4ecdc4',
+    color: '#fff',
+    fontSize: 12,
   },
   coordRow: {
     display: 'flex',
     justifyContent: 'space-between',
     marginBottom: 4,
-    fontSize: 11,
+    fontSize: 10,
   },
   coordLabel: {
     color: '#888',
@@ -323,7 +325,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     marginTop: 8,
     marginBottom: 8,
-    fontSize: 12,
+    fontSize: 11,
   },
   simStatusValue: {
     color: '#ffd93d',

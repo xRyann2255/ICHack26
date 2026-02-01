@@ -195,31 +195,31 @@ export default function CollapsibleSidebar({
   // Compute dynamic presets based on scene bounds
   const presets = sceneBounds
     ? (() => {
-        const { min, max, center, size } = sceneBounds;
-        const flyAltitude = Math.min(Math.max(min[1] + size[1] * 0.7, 50), max[1] - 10);
-        const marginX = Math.min(size[0] * 0.1, 50);
-        const marginZ = Math.min(size[2] * 0.1, 50);
-        return [
-          {
-            name: 'Cross City',
-            description: 'Diagonal path',
-            start: { x: max[0] - marginX, y: flyAltitude, z: max[2] - marginZ },
-            end: { x: min[0] + marginX, y: flyAltitude, z: min[2] + marginZ },
-          },
-          {
-            name: 'East-West',
-            description: 'Horizontal path',
-            start: { x: max[0] - marginX, y: flyAltitude, z: center[2] },
-            end: { x: min[0] + marginX, y: flyAltitude, z: center[2] },
-          },
-          {
-            name: 'North-South',
-            description: 'Vertical path',
-            start: { x: center[0], y: flyAltitude, z: max[2] - marginZ },
-            end: { x: center[0], y: flyAltitude, z: min[2] + marginZ },
-          },
-        ];
-      })()
+      const { min, max, center, size } = sceneBounds;
+      const flyAltitude = Math.min(Math.max(min[1] + size[1] * 0.7, 50), max[1] - 10);
+      const marginX = Math.min(size[0] * 0.1, 50);
+      const marginZ = Math.min(size[2] * 0.1, 50);
+      return [
+        {
+          name: 'Cross City',
+          description: 'Diagonal path',
+          start: { x: max[0] - marginX, y: flyAltitude, z: max[2] - marginZ },
+          end: { x: min[0] + marginX, y: flyAltitude, z: min[2] + marginZ },
+        },
+        {
+          name: 'East-West',
+          description: 'Horizontal path',
+          start: { x: max[0] - marginX, y: flyAltitude, z: center[2] },
+          end: { x: min[0] + marginX, y: flyAltitude, z: center[2] },
+        },
+        {
+          name: 'North-South',
+          description: 'Vertical path',
+          start: { x: center[0], y: flyAltitude, z: max[2] - marginZ },
+          end: { x: center[0], y: flyAltitude, z: min[2] + marginZ },
+        },
+      ];
+    })()
     : DEFAULT_PRESETS;
 
   // Handle preset selection
@@ -392,8 +392,8 @@ export default function CollapsibleSidebar({
           {simulation.status === 'loading'
             ? 'Loading...'
             : simulation.status === 'simulating'
-            ? 'Running...'
-            : 'Start Simulation'}
+              ? 'Running...'
+              : 'Start Simulation'}
         </button>
 
         {/* Status indicator */}
@@ -550,10 +550,10 @@ function getStatusDotStyle(status: string): React.CSSProperties {
       status === 'complete'
         ? '#6bcb77'
         : status === 'simulating'
-        ? '#ffd93d'
-        : status === 'paths_received'
-        ? '#4a9eff'
-        : '#888',
+          ? '#ffd93d'
+          : status === 'paths_received'
+            ? '#4a9eff'
+            : '#888',
   };
 }
 
@@ -634,17 +634,16 @@ const styles: Record<string, React.CSSProperties> = {
     width: 220,
   },
   section: {
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    borderRadius: 10,
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderRadius: 8,
+    backdropFilter: 'blur(5px)',
     overflow: 'hidden',
   },
   sectionHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '10px 14px',
+    padding: '10px 12px',
     cursor: 'pointer',
     transition: 'background-color 0.2s',
   },
@@ -654,24 +653,24 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   sectionIcon: {
-    color: '#4ecdc4',
+    color: '#fff',
     display: 'flex',
     alignItems: 'center',
   },
   sectionTitle: {
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontWeight: 600,
-    fontSize: 13,
+    fontSize: 12,
     color: '#fff',
   },
   expandIcon: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
+    color: '#888',
     fontWeight: 300,
   },
   sectionContent: {
-    padding: '0 14px 14px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+    padding: '0 12px 12px',
+    borderTop: '1px solid #333',
   },
   subsection: {
     marginTop: 12,
@@ -679,7 +678,7 @@ const styles: Record<string, React.CSSProperties> = {
   subsectionTitle: {
     fontSize: 10,
     fontWeight: 600,
-    color: '#666',
+    color: '#888',
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
     marginBottom: 6,
@@ -690,10 +689,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
   },
   presetButton: {
-    padding: '6px 10px',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
+    padding: '6px 8px',
+    border: 'none',
     borderRadius: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#aaa',
     cursor: 'pointer',
     fontSize: 10,
@@ -711,12 +710,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   inputLabel: {
     fontSize: 9,
-    color: '#666',
+    color: '#888',
     fontWeight: 500,
   },
   input: {
     padding: '5px 6px',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
+    border: 'none',
     borderRadius: 4,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     color: '#fff',
@@ -732,9 +731,9 @@ const styles: Record<string, React.CSSProperties> = {
   routeTypeButton: {
     flex: 1,
     padding: '6px 8px',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
+    border: 'none',
     borderRadius: 4,
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#888',
     cursor: 'pointer',
     fontSize: 10,
@@ -743,12 +742,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   routeTypeButtonActive: {
     backgroundColor: '#4a9eff',
-    borderColor: '#4a9eff',
     color: '#fff',
   },
   startButton: {
     width: '100%',
-    padding: '10px',
+    padding: '8px',
     border: 'none',
     borderRadius: 6,
     backgroundColor: '#4ecdc4',
@@ -761,15 +759,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   startButtonDisabled: {
     backgroundColor: '#333',
-    color: '#666',
+    color: '#888',
     cursor: 'not-allowed',
   },
   statusIndicator: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginTop: 10,
-    padding: '6px 10px',
+    marginTop: 8,
+    padding: '6px 8px',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 4,
   },
@@ -781,7 +779,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'center',
     gap: 8,
-    padding: '10px 0',
+    padding: '8px 0',
     marginTop: 8,
   },
   timeLabel: {
@@ -801,8 +799,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   playButton: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: '50%',
     border: 'none',
     backgroundColor: '#4a9eff',
@@ -814,11 +812,11 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'all 0.2s',
   },
   controlButton: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: '50%',
-    border: '1px solid rgba(255, 255, 255, 0.2)',
-    backgroundColor: 'transparent',
+    border: 'none',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#ccc',
     cursor: 'pointer',
     display: 'flex',
@@ -849,8 +847,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#fff',
   },
   completeIndicator: {
-    marginTop: 10,
-    padding: '6px 10px',
+    marginTop: 8,
+    padding: '6px 8px',
     backgroundColor: 'rgba(107, 203, 119, 0.2)',
     borderRadius: 4,
     color: '#6bcb77',
@@ -871,9 +869,9 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
   },
   toggleSwitch: {
-    width: 32,
-    height: 18,
-    borderRadius: 9,
+    width: 30,
+    height: 16,
+    borderRadius: 8,
     position: 'relative',
     cursor: 'pointer',
     transition: 'background-color 0.2s',
@@ -881,8 +879,8 @@ const styles: Record<string, React.CSSProperties> = {
   toggleKnob: {
     position: 'absolute',
     top: 2,
-    width: 14,
-    height: 14,
+    width: 12,
+    height: 12,
     borderRadius: '50%',
     backgroundColor: '#fff',
     transition: 'transform 0.2s',

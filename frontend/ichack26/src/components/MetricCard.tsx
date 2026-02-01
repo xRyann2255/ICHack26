@@ -183,14 +183,14 @@ export default function MetricCard({
           backgroundColor: isBetter
             ? 'rgba(107, 203, 119, 0.2)'
             : isWorse
-            ? 'rgba(255, 107, 107, 0.2)'
-            : 'rgba(136, 136, 136, 0.2)',
+              ? 'rgba(255, 107, 107, 0.2)'
+              : 'rgba(136, 136, 136, 0.2)',
           color: isBetter ? '#6bcb77' : isWorse ? '#ff6b6b' : '#888',
           borderColor: isBetter
             ? 'rgba(107, 203, 119, 0.3)'
             : isWorse
-            ? 'rgba(255, 107, 107, 0.3)'
-            : 'rgba(136, 136, 136, 0.3)',
+              ? 'rgba(255, 107, 107, 0.3)'
+              : 'rgba(136, 136, 136, 0.3)',
         }}
       >
         {isBetter && <CheckIcon />}
@@ -249,16 +249,16 @@ function WarningIcon() {
 const styles: Record<string, React.CSSProperties> = {
   card: {
     padding: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 10,
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    transition: 'transform 0.2s, box-shadow 0.2s',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 8,
+    borderTop: '1px solid #333',
+    transition: 'transform 0.2s',
   },
   header: {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   icon: {
     display: 'flex',
@@ -267,7 +267,7 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.7,
   },
   label: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: 600,
     color: '#888',
     textTransform: 'uppercase',
@@ -286,8 +286,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   routeLabel: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 10,
+    color: '#888',
     textTransform: 'uppercase',
     marginBottom: 4,
   },
@@ -297,13 +297,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 2,
   },
   metricValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 700,
     fontFamily: 'monospace',
   },
   unit: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 11,
+    color: '#888',
     marginLeft: 2,
   },
   arrow: {
@@ -316,11 +316,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
-    padding: '4px 10px',
-    borderRadius: 12,
+    marginTop: 8,
+    padding: '4px 8px',
+    borderRadius: 8,
     fontSize: 10,
     fontWeight: 600,
-    border: '1px solid',
+    borderTop: '1px solid',
   },
 };
