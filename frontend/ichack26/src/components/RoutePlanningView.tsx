@@ -295,7 +295,6 @@ function PlanningOverlay() {
     selectedStart,
     selectedEnd,
     confirmRoute,
-    exitPlanningMode,
     isDataLoaded,
   } = useScene()
 
@@ -322,9 +321,6 @@ function PlanningOverlay() {
       {/* Header */}
       <div style={styles.header}>
         <h2 style={styles.title}>Plan Your Route</h2>
-        <button style={styles.cancelButton} onClick={exitPlanningMode}>
-          Cancel
-        </button>
       </div>
 
       {/* Instructions */}
