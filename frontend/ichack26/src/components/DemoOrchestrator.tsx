@@ -65,12 +65,10 @@ export default function DemoOrchestrator({
 
   // Handle planning a new route after completion
   const handlePlanNewRoute = () => {
-    setPhase('idle')
-    // Small delay to ensure phase is reset before entering planning mode
-    setTimeout(() => {
-      enterPlanningMode()
-      setPhase('route_planning')
-    }, 100)
+    // enterPlanningMode() resets simulation state and sets routePlanningMode to 'selecting_start'
+    // The effect watching routePlanningMode will then set phase to 'route_planning'
+    enterPlanningMode()
+    setPhase('route_planning')
   }
 
   // Transition to route_planning when context enters planning mode
@@ -89,11 +87,11 @@ export default function DemoOrchestrator({
 
   // Start route creation when paths are received after planning
   useEffect(() => {
-    // Start if we have paths and we're in route_planning phase (after calculation)
-    if (paths && phase === 'route_planning') {
+    // Only start if we're in route_planning phase AND actively calculating (user clicked "Calculate Route")
+    // This prevents triggering on stale data from previous simulations
+    if (paths && phase === 'route_planning' && routePlanningMode === 'calculating') {
       const isSimulationStarted = simulation.status === 'paths_received' ||
-        simulation.status === 'simulating' ||
-        simulation.status === 'complete'
+        simulation.status === 'simulating'
       const hasValidPaths = (paths.naive && paths.naive.length > 0) ||
         (paths.optimized && paths.optimized.length > 0)
 
@@ -102,7 +100,8 @@ export default function DemoOrchestrator({
           status: simulation.status,
           naiveLength: paths.naive?.length,
           optimizedLength: paths.optimized?.length,
-          phase
+          phase,
+          routePlanningMode
         })
         // Reset planning mode before transitioning
         exitPlanningMode()
@@ -110,29 +109,29 @@ export default function DemoOrchestrator({
         setRouteProgress(0)
       }
     }
-  }, [simulation.status, paths, phase, exitPlanningMode])
+  }, [simulation.status, paths, phase, routePlanningMode, exitPlanningMode])
 
-  // Legacy auto-start support (for direct simulation starts without planning)
-  useEffect(() => {
-    if (autoStart && paths && phase === 'idle') {
-      const isSimulationStarted = simulation.status === 'paths_received' ||
-        simulation.status === 'simulating' ||
-        simulation.status === 'complete'
-      const hasValidPaths = (paths.naive && paths.naive.length > 0) ||
-        (paths.optimized && paths.optimized.length > 0)
-
-      if (isSimulationStarted && hasValidPaths) {
-        console.log('[DemoOrchestrator] Starting route creation (legacy auto-start)', {
-          status: simulation.status,
-          naiveLength: paths.naive?.length,
-          optimizedLength: paths.optimized?.length,
-          phase
-        })
-        setPhase('route_creation_naive')
-        setRouteProgress(0)
-      }
-    }
-  }, [autoStart, simulation.status, paths, phase])
+  // Legacy auto-start disabled - users should use the "Plan Route" button
+  // useEffect(() => {
+  //   if (autoStart && paths && phase === 'idle') {
+  //     const isSimulationStarted = simulation.status === 'paths_received' ||
+  //       simulation.status === 'simulating' ||
+  //       simulation.status === 'complete'
+  //     const hasValidPaths = (paths.naive && paths.naive.length > 0) ||
+  //       (paths.optimized && paths.optimized.length > 0)
+  //
+  //     if (isSimulationStarted && hasValidPaths) {
+  //       console.log('[DemoOrchestrator] Starting route creation (legacy auto-start)', {
+  //         status: simulation.status,
+  //         naiveLength: paths.naive?.length,
+  //         optimizedLength: paths.optimized?.length,
+  //         phase
+  //       })
+  //       setPhase('route_creation_naive')
+  //       setRouteProgress(0)
+  //     }
+  //   }
+  // }, [autoStart, simulation.status, paths, phase])
 
   // Route creation animation - Naive
   useEffect(() => {
@@ -290,7 +289,44 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1a1a2e',
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+  },
+  idleContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '24px',
+    padding: '40px',
+  },
+  idleTitle: {
+    fontSize: 48,
+    fontWeight: 700,
+    color: '#fff',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    textShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    textAlign: 'center',
+  },
+  idleSubtitle: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.7)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    textAlign: 'center',
+    maxWidth: '500px',
+    lineHeight: 1.5,
+  },
+  planRouteButton: {
+    marginTop: '20px',
+    padding: '18px 48px',
+    border: 'none',
+    borderRadius: '12px',
+    backgroundColor: '#4ecdc4',
+    color: '#000',
+    fontSize: '18px',
+    fontWeight: 700,
+    cursor: 'pointer',
+    transition: 'all 0.3s ease',
+    boxShadow: '0 8px 30px rgba(78, 205, 196, 0.4)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   idleMessage: {
     fontSize: 24,

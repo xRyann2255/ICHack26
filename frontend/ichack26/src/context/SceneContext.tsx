@@ -64,6 +64,7 @@ export interface SceneContextValue {
     end: [number, number, number],
     routeType?: 'naive' | 'optimized' | 'both'
   ) => void;
+  resetSimulation: () => void;
 
   // Playback control
   playback: PlaybackControl;
@@ -121,10 +122,12 @@ export function SceneProvider({
 
   // Route planning functions
   const enterPlanningMode = useCallback(() => {
+    // Reset simulation state from previous run
+    ws.resetSimulation();
     setRoutePlanningMode('selecting_start');
     setSelectedStartState(null);
     setSelectedEndState(null);
-  }, []);
+  }, [ws]);
 
   const exitPlanningMode = useCallback(() => {
     setRoutePlanningMode('idle');
@@ -205,6 +208,7 @@ export function SceneProvider({
 
       // Simulation control
       startSimulation: ws.startSimulation,
+      resetSimulation: ws.resetSimulation,
 
       // Playback control
       playback: ws.playback,

@@ -364,6 +364,18 @@ function PlanningOverlay() {
 // ============================================================================
 
 export default function RoutePlanningView({ showWindField = true }: RoutePlanningViewProps) {
+  const { isDataLoaded } = useScene()
+
+  // Show loading state if scene data isn't loaded yet
+  if (!isDataLoaded) {
+    return (
+      <div style={styles.loadingScreen}>
+        <div style={styles.loadingSpinner} />
+        <div style={styles.loadingScreenText}>Loading scene data...</div>
+      </div>
+    )
+  }
+
   return (
     <div style={styles.container}>
       <Canvas
@@ -539,6 +551,29 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
+  loadingScreen: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    gap: '20px',
+  },
+  loadingSpinner: {
+    width: '40px',
+    height: '40px',
+    border: '3px solid rgba(255, 255, 255, 0.1)',
+    borderTopColor: '#4ecdc4',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  loadingScreenText: {
+    fontSize: '16px',
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+  },
 }
 
 // Add keyframes for loading animation
@@ -551,6 +586,10 @@ if (typeof document !== 'undefined') {
       @keyframes loadingSlide {
         0% { transform: translateX(-100%); }
         100% { transform: translateX(566%); }
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
       }
     `
     document.head.appendChild(styleSheet)
