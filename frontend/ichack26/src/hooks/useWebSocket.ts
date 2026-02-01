@@ -376,6 +376,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         status: 'loading',
       });
 
+      // Request scene data first if not already loaded
+      if (!sceneData || !windFieldData) {
+        console.log('[WS] Fetching scene data before starting simulation...');
+        send({ type: 'get_all', downsample: 2 });
+      }
+
       send({
         type: 'start',
         start,
@@ -383,7 +389,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         route_type: routeType,
       });
     },
-    [send]
+    [send, sceneData, windFieldData]
   );
 
   const ping = useCallback(() => {
