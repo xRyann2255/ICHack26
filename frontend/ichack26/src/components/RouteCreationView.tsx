@@ -166,7 +166,6 @@ function SceneContent({ progress, currentRoute, showWindField }: SceneContentPro
           streamlineCount={400}
           integrationSteps={18}
           stepSize={8.0}
-          opacity={0.5}
           arrowSize={3.5}
         />
       )}
