@@ -158,7 +158,8 @@ class VTULoader:
         vtu_path: str,
         scene_bounds_min: Vector3,
         scene_bounds_max: Vector3,
-        resolution: float = 10.0
+        resolution: float = 10.0,
+        center_offset: np.ndarray = None
     ) -> WindField:
         """
         Main entry point: Load VTU, convert coords, normalize to scene, create WindField.
@@ -168,6 +169,7 @@ class VTULoader:
             scene_bounds_min: Scene minimum corner (from STL)
             scene_bounds_max: Scene maximum corner (from STL)
             resolution: Wind field grid resolution in meters
+            center_offset: Offset to apply to points (from STL centering)
 
         Returns:
             WindField normalized to scene bounds
@@ -183,11 +185,19 @@ class VTULoader:
             points_of, velocity_of
         )
 
-        print(f"Scene coords bounds:")
+        print(f"Scene coords bounds (before centering):")
         print(f"  X: [{points_scene[:, 0].min():.1f}, {points_scene[:, 0].max():.1f}]")
         print(f"  Y: [{points_scene[:, 1].min():.1f}, {points_scene[:, 1].max():.1f}]")
         print(f"  Z: [{points_scene[:, 2].min():.1f}, {points_scene[:, 2].max():.1f}]")
 
+        # Step 3: Apply the same centering offset as STL mesh
+        if center_offset is not None:
+            print(f"\n=== Applying centering offset: {center_offset} ===")
+            points_scene = points_scene + center_offset
+            print(f"Scene coords bounds (after centering):")
+            print(f"  X: [{points_scene[:, 0].min():.1f}, {points_scene[:, 0].max():.1f}]")
+            print(f"  Y: [{points_scene[:, 1].min():.1f}, {points_scene[:, 1].max():.1f}]")
+            print(f"  Z: [{points_scene[:, 2].min():.1f}, {points_scene[:, 2].max():.1f}]")
 
         # Step 4: Create WindField on regular grid
         wind_field = VTULoader.create_wind_field(

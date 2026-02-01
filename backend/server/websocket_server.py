@@ -148,9 +148,12 @@ class WebSocketServer:
             if not os.path.exists(vtu_path):
                 raise FileNotFoundError(f"VTU file not found: {vtu_path}")
 
-        # Load STL mesh
+        # Load STL mesh (get the centering offset to apply to VTU data)
         logger.info(f"Loading STL: {stl_path}")
-        self.mesh = STLLoader.load_stl(stl_path, convert_coords=True, center_xy=True, ground_at_zero=True)
+        self.mesh, stl_center_offset = STLLoader.load_stl(
+            stl_path, convert_coords=True, center_xy=True, ground_at_zero=True, return_offset=True
+        )
+        logger.info(f"STL centering offset: {stl_center_offset}")
 
         # Calculate scene bounds from mesh
         margin = 50.0
@@ -166,13 +169,14 @@ class WebSocketServer:
             self.mesh.max_bounds[2] + margin
         )
 
-        # Load wind field from VTU
+        # Load wind field from VTU (apply same centering offset as STL)
         logger.info(f"Loading VTU wind data: {vtu_path}")
         self.wind_field = VTULoader.load_and_normalize(
             vtu_path,
             scene_bounds_min=bounds_min,
             scene_bounds_max=bounds_max,
-            resolution=self.config.wind_resolution
+            resolution=self.config.wind_resolution,
+            center_offset=stl_center_offset
         )
         # Take every 10 points from the main wind field (N, 3)
         N = 10
