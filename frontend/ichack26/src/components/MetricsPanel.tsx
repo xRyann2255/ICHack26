@@ -208,13 +208,6 @@ export default function MetricsPanel() {
                   delay={400}
                 />
               )}
-              {summary.riskReduction > 0 && (
-                <SummaryStat
-                  value={`${summary.riskReduction.toFixed(1)}%`}
-                  label="safer"
-                  delay={600}
-                />
-              )}
             </div>
           </div>
 
