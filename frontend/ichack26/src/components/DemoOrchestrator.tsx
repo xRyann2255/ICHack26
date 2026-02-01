@@ -225,18 +225,18 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#87CEEB',
+    backgroundColor: '#1a1a2e',
   },
   idleMessage: {
     fontSize: 24,
     fontWeight: 600,
-    color: '#2c3e50',
+    color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   idleHint: {
     marginTop: 12,
     fontSize: 14,
-    color: '#5a6c7d',
+    color: '#888',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   phaseIndicator: {

@@ -20,7 +20,7 @@ function App() {
 
   return (
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
-      <div style={{ width: '100vw', height: '100vh', background: '#87CEEB' }}>
+      <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }}>
         {/* WebSocket connection status overlay */}
         <ConnectionStatus />
 
@@ -149,6 +149,8 @@ function App() {
               }}
               shadows
             >
+              <color attach="background" args={['#1a1a2e']} />
+              <fog attach="fog" args={['#1a1a2e', 500, 2000]} />
               <Scene visibility={visibility} />
             </Canvas>
             <MetricsPanel />
@@ -167,7 +169,7 @@ const viewToggleStyles: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 4,
     zIndex: 1000,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: 8,
     padding: 4,
     boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
@@ -178,7 +180,7 @@ const viewToggleStyles: Record<string, React.CSSProperties> = {
     border: 'none',
     borderRadius: 6,
     backgroundColor: 'transparent',
-    color: '#fff',
+    color: '#888',
     cursor: 'pointer',
     fontSize: 12,
     fontWeight: 500,
