@@ -40,21 +40,22 @@ function Marker({ position, color, label, pulseColor, buildings = [] }: MarkerPr
   const [hovered, setHovered] = useState(false)
 
   // Calculate ground level based on buildings under this position
+  // Coordinate system: API uses [x, y, z] where x=east, y=north, z=altitude
+  // Three.js uses [x, y, z] where x=east, y=up, z=north
+  // position is stored as [API_x, API_y, API_z] = [Three.js_x, Three.js_z, altitude]
   const groundLevel = useMemo(() => {
-    const x = position[0]
-    const z = position[2]
+    const apiX = position[0]  // East-west (Three.js X)
+    const apiY = position[1]  // North-south (Three.js Z)
     let maxHeight = 0
 
     for (const building of buildings) {
-      // Check if position is within building footprint (x and z)
+      // Check if position is within building footprint (API X and Y axes)
       if (
-        x >= building.min[0] &&
-        x <= building.max[0] &&
-        z >= building.min[2] &&
-        z <= building.max[2]
+        apiX >= building.min[0] && apiX <= building.max[0] &&  // X bounds (east-west)
+        apiY >= building.min[1] && apiY <= building.max[1]     // Y bounds (north-south)
       ) {
-        // Use the top of the building (max[1] is the Y height)
-        maxHeight = Math.max(maxHeight, building.max[1])
+        // Building height is on API Z axis (altitude) = building.max[2]
+        maxHeight = Math.max(maxHeight, building.max[2])
       }
     }
 
@@ -71,7 +72,7 @@ function Marker({ position, color, label, pulseColor, buildings = [] }: MarkerPr
   })
 
   return (
-    <group position={[position[0], 0, position[2]]}>
+    <group position={[position[0], 0, position[1]]}>
       {/* Ground ring */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundLevel + 1, 0]}>
         <ringGeometry args={[8, 12, 32]} />
@@ -130,8 +131,29 @@ function Marker({ position, color, label, pulseColor, buildings = [] }: MarkerPr
 // ============================================================================
 
 function ClickablePlane() {
-  const { sceneBounds, routePlanningMode, setSelectedStart, setSelectedEnd } = useScene()
+  const { sceneBounds, routePlanningMode, setSelectedStart, setSelectedEnd, sceneData } = useScene()
   const [hovered, setHovered] = useState(false)
+  const buildings = sceneData?.buildings ?? []
+
+  // Helper to calculate ground level at a position
+  const getGroundLevel = useCallback(
+    (x: number, z: number) => {
+      // x = API X (east-west), z = Three.js Z = API Y (north-south)
+      let maxHeight = 0
+      console.log(`[GroundLevel] Checking position (${x.toFixed(1)}, ${z.toFixed(1)}) against ${buildings.length} buildings`)
+      for (const building of buildings) {
+        const inX = x >= building.min[0] && x <= building.max[0]
+        const inY = z >= building.min[1] && z <= building.max[1]
+        if (inX && inY) {
+          console.log(`[GroundLevel] Found building: min=(${building.min.join(',')}), max=(${building.max.join(',')}) height=${building.max[2]}`)
+          maxHeight = Math.max(maxHeight, building.max[2])  // Height is API Z
+        }
+      }
+      console.log(`[GroundLevel] Final height: ${maxHeight}`)
+      return maxHeight
+    },
+    [buildings]
+  )
 
   const handleClick = useCallback(
     (event: { point: THREE.Vector3 }) => {
@@ -139,10 +161,13 @@ function ClickablePlane() {
       if (routePlanningMode !== 'selecting_start' && routePlanningMode !== 'selecting_end') return
 
       const point = event.point
-      // Default altitude for drone flight
-      const altitude = Math.min(Math.max(sceneBounds.min[1] + sceneBounds.size[1] * 0.7, 50), sceneBounds.max[1] - 10)
+      // Calculate ground level at clicked position (building top or floor)
+      const groundLevel = getGroundLevel(point.x, point.z)
 
-      const position: [number, number, number] = [point.x, altitude, point.z]
+      // API expects [x, y, z] where x=east, y=north, z=altitude
+      // Three.js uses x=east, y=up, z=north
+      // So: API_x = Three.js_x, API_y = Three.js_z, API_z = altitude
+      const position: [number, number, number] = [point.x, point.z, groundLevel]
 
       if (routePlanningMode === 'selecting_start') {
         setSelectedStart(position)
@@ -150,7 +175,7 @@ function ClickablePlane() {
         setSelectedEnd(position)
       }
     },
-    [sceneBounds, routePlanningMode, setSelectedStart, setSelectedEnd]
+    [sceneBounds, routePlanningMode, setSelectedStart, setSelectedEnd, getGroundLevel]
   )
 
   // Change cursor when hovering over clickable area
@@ -340,7 +365,7 @@ function PlanningOverlay() {
             <span style={styles.stepLabel}>Start Point</span>
             {selectedStart && (
               <span style={styles.stepCoords}>
-                ({selectedStart[0].toFixed(0)}, {selectedStart[2].toFixed(0)})
+                ({selectedStart[0].toFixed(0)}, {selectedStart[1].toFixed(0)})
               </span>
             )}
           </div>
@@ -358,7 +383,7 @@ function PlanningOverlay() {
             <span style={styles.stepLabel}>End Point</span>
             {selectedEnd && (
               <span style={styles.stepCoords}>
-                ({selectedEnd[0].toFixed(0)}, {selectedEnd[2].toFixed(0)})
+                ({selectedEnd[0].toFixed(0)}, {selectedEnd[1].toFixed(0)})
               </span>
             )}
           </div>

@@ -288,9 +288,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   // ============================================================================
 
   const connect = useCallback(() => {
-    // Clean up existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
+    // Skip if already connected or connecting
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+      console.log('[WS] Already connected or connecting, skipping');
+      return;
     }
 
     // Clear reconnect timeout
@@ -314,23 +315,28 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
     ws.onclose = (event) => {
       console.log('[WS] Disconnected:', event.code, event.reason);
-      setStatus('disconnected');
-      wsRef.current = null;
+      // Only update state if this is still the current connection
+      if (wsRef.current === ws) {
+        setStatus('disconnected');
+        wsRef.current = null;
 
-      // Auto-reconnect if not intentionally closed
-      if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
-        reconnectAttempts.current++;
-        console.log(
-          `[WS] Reconnecting in ${reconnectInterval}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`
-        );
-        reconnectTimeoutRef.current = window.setTimeout(connect, reconnectInterval);
+        // Auto-reconnect if not intentionally closed
+        if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current++;
+          console.log(
+            `[WS] Reconnecting in ${reconnectInterval}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`
+          );
+          reconnectTimeoutRef.current = window.setTimeout(() => connectRef.current(), reconnectInterval);
+        }
       }
     };
 
     ws.onerror = (event) => {
       console.error('[WS] Error:', event);
-      setStatus('error');
-      setError('WebSocket connection error');
+      if (wsRef.current === ws) {
+        setStatus('error');
+        setError('WebSocket connection error');
+      }
     };
 
     ws.onmessage = handleMessage;
@@ -369,9 +375,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
   const send = useCallback((message: ClientMessage) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('[WS] Sending:', message);
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.warn('[WS] Cannot send - not connected');
+      console.warn('[WS] Cannot send - not connected. Message:', message);
+      console.warn('[WS] WebSocket state:', wsRef.current?.readyState);
     }
   }, []);
 
@@ -443,16 +451,27 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   // Effects
   // ============================================================================
 
-  // Auto-connect on mount
+  // Auto-connect on mount (only run once)
   useEffect(() => {
     if (autoConnect) {
-      connect();
+      connectRef.current();
     }
 
     return () => {
-      disconnect();
+      // Clean up on unmount
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (periodicReconnectRef.current) {
+        clearInterval(periodicReconnectRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmounted');
+        wsRef.current = null;
+      }
     };
-  }, [autoConnect, connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoConnect]);
 
   // Periodic reconnection check - keeps trying if disconnected
   useEffect(() => {
@@ -466,14 +485,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     periodicReconnectRef.current = window.setInterval(() => {
       // Use refs to get current values (avoids stale closures)
       const currentStatus = statusRef.current;
+      const wsState = wsRef.current?.readyState;
 
-      // Only attempt reconnect if disconnected or in error state
-      if (
-        (currentStatus === 'disconnected' || currentStatus === 'error') &&
-        !wsRef.current &&
-        !reconnectTimeoutRef.current
-      ) {
-        console.log('[WS] Periodic reconnect check - attempting connection...');
+      // Only attempt reconnect if not connected
+      if (wsState !== WebSocket.OPEN && wsState !== WebSocket.CONNECTING) {
+        console.log('[WS] Periodic reconnect - status:', currentStatus, 'wsState:', wsState);
         reconnectAttempts.current = 0; // Reset attempts for periodic retry
         connectRef.current();
       }
