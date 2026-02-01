@@ -38,10 +38,12 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [hovered, setHovered] = useState(false)
 
+  const baseHeight = 20 // Height just above floor
+
   useFrame((state) => {
     if (meshRef.current) {
-      // Gentle floating animation
-      meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 2) * 2 + 15
+      // Gentle floating animation just above the floor
+      meshRef.current.position.y = baseHeight + Math.sin(state.clock.elapsedTime * 2) * 2
     }
   })
 
@@ -59,16 +61,16 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
         <meshBasicMaterial color={pulseColor} transparent opacity={0.3} />
       </mesh>
 
-      {/* Vertical beam */}
-      <mesh position={[0, position[1] / 2 + 5, 0]}>
-        <cylinderGeometry args={[1, 1, position[1] + 10, 8]} />
+      {/* Short vertical beam */}
+      <mesh position={[0, baseHeight / 2, 0]}>
+        <cylinderGeometry args={[1, 1, baseHeight, 8]} />
         <meshBasicMaterial color={color} transparent opacity={0.4} />
       </mesh>
 
-      {/* Floating marker */}
+      {/* Floating marker just above floor */}
       <mesh
         ref={meshRef}
-        position={[0, position[1] + 15, 0]}
+        position={[0, baseHeight, 0]}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
@@ -82,7 +84,7 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
 
       {/* Label */}
       <Html
-        position={[0, position[1] + 35, 0]}
+        position={[0, baseHeight + 20, 0]}
         center
         style={{
           color: '#fff',
@@ -188,7 +190,7 @@ function PlanningCameraController() {
 // ============================================================================
 
 function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
-  const { windFieldData, selectedStart, selectedEnd } = useScene()
+  const { windFieldData, selectedStart, selectedEnd, sceneBounds } = useScene()
 
   return (
     <>
@@ -222,8 +224,8 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
         />
       )}
 
-      {/* Clickable plane for point selection */}
-      <ClickablePlane />
+      {/* Clickable plane for point selection - only render if bounds available */}
+      {sceneBounds && <ClickablePlane />}
 
       {/* Start marker */}
       {selectedStart && (
@@ -267,9 +269,13 @@ function PlanningOverlay() {
     selectedStart,
     selectedEnd,
     confirmRoute,
+    isDataLoaded,
   } = useScene()
 
   const getMessage = () => {
+    if (!isDataLoaded) {
+      return 'Loading scene data...'
+    }
     switch (routePlanningMode) {
       case 'selecting_start':
         return 'Click on the map to set the START point'
@@ -533,6 +539,29 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ccc',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
+  loadingScreen: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    gap: '20px',
+  },
+  loadingSpinner: {
+    width: '40px',
+    height: '40px',
+    border: '3px solid rgba(255, 255, 255, 0.1)',
+    borderTopColor: '#4ecdc4',
+    borderRadius: '50%',
+    animation: 'spin 1s linear infinite',
+  },
+  loadingScreenText: {
+    fontSize: '16px',
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+  },
 }
 
 // Add keyframes for loading animation
@@ -545,6 +574,10 @@ if (typeof document !== 'undefined') {
       @keyframes loadingSlide {
         0% { transform: translateX(-100%); }
         100% { transform: translateX(566%); }
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
       }
     `
     document.head.appendChild(styleSheet)

@@ -91,6 +91,7 @@ export interface UseWebSocketReturn {
     end: [number, number, number],
     routeType?: 'naive' | 'optimized' | 'both'
   ) => void;
+  resetSimulation: () => void;
   ping: () => void;
 }
 
@@ -411,6 +412,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     send({ type: 'ping' });
   }, [send]);
 
+  // Reset simulation state (for starting a new route)
+  const resetSimulation = useCallback(() => {
+    setSimulation(INITIAL_SIMULATION_STATE);
+  }, []);
+
   // Playback control functions
   const setPlaybackPaused = useCallback((paused: boolean) => {
     setPlayback((prev) => ({ ...prev, isPaused: paused }));
@@ -455,6 +461,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     requestWindField,
     requestAll,
     startSimulation,
+    resetSimulation,
     ping,
   };
 }
