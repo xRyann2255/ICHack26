@@ -192,86 +192,74 @@ export default function MetricsPanel() {
             <>
               {/* Summary Box - Highlighted at top */}
               <div style={styles.summaryBox}>
-            <div style={styles.summaryTitle}>Optimization Benefits</div>
-            <div style={styles.summaryStats}>
-              {summary.timeSaved > 0 && (
-                <SummaryStat
-                  value={formatDuration(summary.timeSaved)}
-                  label="faster"
-                  delay={200}
+                <div style={styles.summaryTitle}>Optimization Benefits</div>
+                <div style={styles.summaryStats}>
+                  {summary.timeSaved > 0 && (
+                    <SummaryStat
+                      value={formatDuration(summary.timeSaved)}
+                      label="faster"
+                      delay={200}
+                    />
+                  )}
+                  {summary.energySaved > 0 && (
+                    <SummaryStat
+                      value={`${summary.energyImprovement.toFixed(0)}%`}
+                      label="less energy"
+                      delay={400}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Metrics Grid */}
+              <div style={styles.metricsGrid}>
+                <MetricCard
+                  label="Flight Time"
+                  naiveValue={summary.naive.total_flight_time}
+                  optimizedValue={summary.optimized.total_flight_time}
+                  unit="s"
+                  lowerIsBetter={true}
+                  decimals={1}
+                  icon={<ClockIcon />}
+                  animationDelay={0}
                 />
-              )}
-              {summary.energySaved > 0 && (
-                <SummaryStat
-                  value={`${summary.energyImprovement.toFixed(0)}%`}
-                  label="less energy"
-                  delay={400}
+
+                <MetricCard
+                  label="Distance"
+                  naiveValue={summary.naive.total_distance}
+                  optimizedValue={summary.optimized.total_distance}
+                  unit="m"
+                  lowerIsBetter={true}
+                  decimals={0}
+                  icon={<RouteIcon />}
+                  animationDelay={100}
                 />
-              )}
-            </div>
-          </div>
 
-          {/* Metrics Grid */}
-          <div style={styles.metricsGrid}>
-            <MetricCard
-              label="Flight Time"
-              naiveValue={summary.naive.total_flight_time}
-              optimizedValue={summary.optimized.total_flight_time}
-              unit="s"
-              lowerIsBetter={true}
-              decimals={1}
-              icon={<ClockIcon />}
-              animationDelay={0}
-            />
+                <MetricCard
+                  label="Energy Used"
+                  naiveValue={summary.naive.energy_consumption}
+                  optimizedValue={summary.optimized.energy_consumption}
+                  unit="Wh"
+                  lowerIsBetter={true}
+                  decimals={2}
+                  icon={<BatteryIcon />}
+                  animationDelay={200}
+                />
 
-            <MetricCard
-              label="Distance"
-              naiveValue={summary.naive.total_distance}
-              optimizedValue={summary.optimized.total_distance}
-              unit="m"
-              lowerIsBetter={true}
-              decimals={0}
-              icon={<RouteIcon />}
-              animationDelay={100}
-            />
-
-            <MetricCard
-              label="Energy Used"
-              naiveValue={summary.naive.energy_consumption}
-              optimizedValue={summary.optimized.energy_consumption}
-              unit="Wh"
-              lowerIsBetter={true}
-              decimals={2}
-              icon={<BatteryIcon />}
-              animationDelay={200}
-            />
-
-            <MetricCard
-              label="Avg Speed"
-              naiveValue={summary.naive.average_ground_speed}
-              optimizedValue={summary.optimized.average_ground_speed}
-              unit="m/s"
-              lowerIsBetter={false}
-              decimals={1}
-              icon={<SpeedIcon />}
-              animationDelay={400}
-            />
-          </div>
+                <MetricCard
+                  label="Avg Speed"
+                  naiveValue={summary.naive.average_ground_speed}
+                  optimizedValue={summary.optimized.average_ground_speed}
+                  unit="m/s"
+                  lowerIsBetter={false}
+                  decimals={1}
+                  icon={<SpeedIcon />}
+                  animationDelay={400}
+                />
+              </div>
 
               {/* Additional Details (expandable) */}
               <div style={styles.detailsSection}>
-                <div style={styles.detailRow}>
-                  <span style={styles.detailLabel}>Max Turbulence</span>
-                  <span style={styles.detailValues}>
-                    <span style={{ color: '#ff6b6b' }}>
-                      {summary.naive.max_turbulence_encountered.toFixed(2)}
-                    </span>
-                    <span style={styles.detailSeparator}>vs</span>
-                    <span style={{ color: '#4ecdc4' }}>
-                      {summary.optimized.max_turbulence_encountered.toFixed(2)}
-                    </span>
-                  </span>
-                </div>
                 <div style={styles.detailRow}>
                   <span style={styles.detailLabel}>Max Wind Speed</span>
                   <span style={styles.detailValues}>
