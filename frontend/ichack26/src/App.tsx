@@ -114,6 +114,9 @@ function AppContent() {
       replayTrigger,
       viewMode
     })
+    // Switch to cinematic mode
+    setViewMode('cinematic')
+    // Trigger replay
     setReplayTrigger(prev => prev + 1)
     // Reset cinematicComplete to disable button during replay
     setCinematicComplete(false)
@@ -225,7 +228,7 @@ function AppContent() {
       )}
 
       {/* Replay Cinematic Button - Below Wind Toggle */}
-      {showControls && viewMode === 'cinematic' && (
+      {showControls && (
         <button
           style={{
             position: 'absolute',

@@ -70,9 +70,13 @@ export default function DemoOrchestrator({
 
   // Handle replay - restart simulation immediately
   useEffect(() => {
-    console.log('[DemoOrchestrator] Replay effect triggered:', { replayTrigger, phase, lastReplayTrigger })
-    // Only trigger if replayTrigger has actually changed
-    if (replayTrigger && replayTrigger > 0 && replayTrigger !== lastReplayTrigger && (phase === 'complete' || phase === 'drone_flight')) {
+    console.log('[DemoOrchestrator] Replay effect triggered:', { replayTrigger, phase, lastReplayTrigger, simulationStatus: simulation.status })
+    // Trigger if replayTrigger has changed and we have paths to replay
+    // Allow replay from any phase if simulation is complete or has paths available
+    const canReplay = replayTrigger && replayTrigger > 0 && replayTrigger !== lastReplayTrigger
+    const hasCompletedSimulation = simulation.status === 'complete' || phase === 'complete' || phase === 'drone_flight'
+
+    if (canReplay && hasCompletedSimulation) {
       console.log('[DemoOrchestrator] Replaying simulation')
       setLastReplayTrigger(replayTrigger)
 
@@ -97,7 +101,7 @@ export default function DemoOrchestrator({
         }
       }
     }
-  }, [replayTrigger, phase, lastReplayTrigger, paths, resetSimulation, setPlaybackPaused, startSimulation])
+  }, [replayTrigger, phase, lastReplayTrigger, paths, resetSimulation, setPlaybackPaused, startSimulation, simulation.status])
 
   // Handle entering planning mode
   const handlePlanRoute = () => {

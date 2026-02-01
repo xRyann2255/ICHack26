@@ -39,9 +39,6 @@ export interface WindFieldProps {
 // Color Utilities
 // ============================================================================
 
-// Reusable color object to avoid allocations
-const _tempColor = new THREE.Color()
-
 // Color gradient stops for kinetic energy visualization
 const KE_COLOR_GRADIENT = [
   { value: 0.0, color: new THREE.Color(0x0000ff) },  // Blue - Low energy

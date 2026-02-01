@@ -111,7 +111,7 @@ export default function HomePage({ onPlanRoute, imageUrl }: HomePageProps) {
             </span>
           </div>
           <div style={styles.tagline}>
-            Tactical Route Analysis & Control
+            Energy efficient drone routing powered by high fidelity CFD simulations
           </div>
         </div>
 
@@ -149,7 +149,7 @@ export default function HomePage({ onPlanRoute, imageUrl }: HomePageProps) {
 
         {/* Footer */}
         <div style={styles.footer}>
-          Autonomous drone route optimization with wind analysis
+          Demo @ South Kensington Campus
         </div>
       </div>
     </div>
