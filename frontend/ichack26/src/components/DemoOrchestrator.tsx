@@ -11,6 +11,7 @@ import DroneFlightView from './DroneFlightView'
 import TransitionOverlay from './TransitionOverlay'
 import MetricsPanel from './MetricsPanel'
 import { useScene } from '../context/SceneContext'
+import type { VisibilityState } from './VisibilityToggles'
 
 // ============================================================================
 // Types
@@ -31,6 +32,8 @@ export interface DemoOrchestratorProps {
   routeCreationSpeed?: number
   /** Duration of transition overlay in ms */
   transitionDuration?: number
+  /** Visibility state for wind field, etc */
+  visibility?: Partial<VisibilityState>
 }
 
 // ============================================================================
@@ -41,12 +44,16 @@ export default function DemoOrchestrator({
   autoStart = true,
   routeCreationSpeed = 0.015,
   transitionDuration = 2500,
+  visibility,
 }: DemoOrchestratorProps) {
   const { simulation, paths } = useScene()
 
   // Demo state
   const [phase, setPhase] = useState<DemoPhase>('idle')
   const [routeProgress, setRouteProgress] = useState(0)
+
+  // Wind field visibility
+  const showWindField = visibility?.windField ?? true
 
   // Start demo when paths are received or simulation starts
   useEffect(() => {
@@ -147,7 +154,7 @@ export default function DemoOrchestrator({
           <RouteCreationView
             progress={routeProgress}
             currentRoute="naive"
-            showWindField={true}
+            showWindField={showWindField}
           />
         )
 
@@ -156,7 +163,7 @@ export default function DemoOrchestrator({
           <RouteCreationView
             progress={routeProgress}
             currentRoute="optimized"
-            showWindField={true}
+            showWindField={showWindField}
           />
         )
 
@@ -167,7 +174,7 @@ export default function DemoOrchestrator({
             <RouteCreationView
               progress={1}
               currentRoute="optimized"
-              showWindField={true}
+              showWindField={showWindField}
             />
             <TransitionOverlay
               message="Routes Computed"
@@ -179,12 +186,12 @@ export default function DemoOrchestrator({
         )
 
       case 'drone_flight':
-        return <DroneFlightView showWindField={true} />
+        return <DroneFlightView showWindField={showWindField} />
 
       case 'complete':
         return (
           <>
-            <DroneFlightView showWindField={true} />
+            <DroneFlightView showWindField={showWindField} />
             <MetricsPanel />
           </>
         )

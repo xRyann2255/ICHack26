@@ -187,7 +187,7 @@ function Toggle({ label, color, checked, onChange }: ToggleProps) {
 // ============================================================================
 
 export const DEFAULT_VISIBILITY: VisibilityState = {
-  windField: true,
+  windField: false,
   naivePath: true,
   optimizedPath: true,
   naiveDrone: true,

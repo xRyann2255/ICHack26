@@ -78,12 +78,23 @@ export default function DroneStats({
     : 0
 
   const accentColor = routeType === 'naive' ? '#ff6b6b' : '#4ecdc4'
+  const routeLabel = routeType === 'naive' ? 'Naive Route' : 'Wind-Optimized Route'
 
   return (
     <div style={{
       ...styles.container,
       [position]: 16,
     }}>
+      {/* Route Title */}
+      <div style={styles.routeTitle}>
+        <span style={{ color: accentColor, fontWeight: 700, fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {routeLabel}
+        </span>
+      </div>
+
+      {/* Divider */}
+      <div style={styles.titleDivider} />
+
       {/* Speed */}
       <div style={styles.statRow}>
         <span style={styles.statLabel}>Ground Speed</span>
@@ -165,6 +176,16 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 160,
     backdropFilter: 'blur(5px)',
     zIndex: 100,
+  },
+  routeTitle: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  titleDivider: {
+    height: 1,
+    backgroundColor: '#444',
+    marginBottom: 10,
   },
   statRow: {
     display: 'flex',

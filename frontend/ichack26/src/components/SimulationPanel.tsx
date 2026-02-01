@@ -13,6 +13,7 @@ import Terrain from './Terrain'
 import WindField from './WindField'
 import FlightPath from './FlightPath'
 import Drone from './Drone'
+import DroneStats from './DroneStats'
 import { useScene } from '../context/SceneContext'
 
 // ============================================================================
@@ -225,13 +226,12 @@ export default function SimulationPanel({
   isControlPanel = false,
   onCameraChange,
 }: SimulationPanelProps) {
+  const { currentFrame, paths } = useScene()
+  const frame = currentFrame[routeType]
+  const path = paths?.[routeType]
+
   return (
     <div style={styles.panel}>
-      {/* Panel label */}
-      <div style={{ ...styles.label, backgroundColor: labelColor }}>
-        {label}
-      </div>
-
       {/* 3D Canvas */}
       <Canvas
         camera={{
@@ -256,6 +256,14 @@ export default function SimulationPanel({
           targetCamera={cameraRef?.current}
         />
       </Canvas>
+
+      {/* Drone Stats Overlay */}
+      <DroneStats
+        frame={frame}
+        routeType={routeType}
+        position={isControlPanel ? 'left' : 'right'}
+        totalWaypoints={path?.length || 0}
+      />
     </div>
   )
 }
@@ -270,21 +278,5 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     height: '100%',
     overflow: 'hidden',
-  },
-  label: {
-    position: 'absolute',
-    top: 12,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    padding: '8px 20px',
-    borderRadius: 20,
-    color: '#fff',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-    fontSize: 14,
-    fontWeight: 600,
-    zIndex: 100,
-    textTransform: 'uppercase',
-    letterSpacing: '1px',
-    boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
   },
 }
