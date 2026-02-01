@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 import numpy as np
+import time
 from typing import Tuple, Optional
 from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
 from concurrent.futures import ThreadPoolExecutor
+
+try:
+    from tqdm import tqdm
+    TQDM_AVAILABLE = True
+except ImportError:
+    TQDM_AVAILABLE = False
 
 from ..grid.node import Vector3
 from .wind_field import WindField
@@ -71,104 +78,151 @@ class VTULoader:
         Returns:
             WindField with interpolated data
         """
-        print(f"Loading VTU wind field from {vtu_path}...")
+        total_start = time.time()
 
-        # Load the VTU mesh (cached to avoid duplicate reads)
-        points, velocity = VTULoader._load_vtu_raw(vtu_path, velocity_field_name)
-        points = points.copy()
-        velocity = velocity.copy()
+        # Define processing steps for progress bar
+        steps = [
+            "Loading VTU file",
+            "Coordinate conversion",
+            "Building Delaunay triangulation",
+            "Interpolating velocity field",
+            "Filling outside CFD domain",
+            "Computing turbulence"
+        ]
 
-        print(f"  VTU contains {len(points)} points")
-        print(f"  VTU bounds (original): X[{points[:, 0].min():.1f}, {points[:, 0].max():.1f}], "
-              f"Y[{points[:, 1].min():.1f}, {points[:, 1].max():.1f}], "
-              f"Z[{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
+        # Create progress bar if tqdm is available
+        if TQDM_AVAILABLE:
+            pbar = tqdm(total=len(steps), desc="VTU Processing", unit="step",
+                       bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+        else:
+            pbar = None
 
-        if convert_coords:
-            # Convert from Z-up (OpenFOAM/CFD) to Y-up (Three.js/backend)
-            # OpenFOAM: X=east, Y=north, Z=up
-            # Backend: X=east, Y=up, Z=north (but negated: Z=-Y_original)
-            # Match STL transformation: (x, z, -y)
-            points = np.column_stack([
-                points[:, 0],   # X stays X
-                points[:, 2],   # Z becomes Y (up)
-                -points[:, 1],  # Y becomes -Z (negated to match STL transform)
+        def update_progress(step_name: str, step_time: float = None):
+            """Update progress bar with step completion."""
+            if pbar:
+                time_str = f" ({step_time:.1f}s)" if step_time else ""
+                pbar.set_postfix_str(f"{step_name}{time_str}")
+                pbar.update(1)
+            else:
+                time_str = f" in {step_time:.1f}s" if step_time else ""
+                print(f"  [{steps.index(step_name) + 1}/{len(steps)}] {step_name}{time_str}")
+
+        try:
+            print(f"\nLoading VTU wind field from {vtu_path}")
+            print(f"  Resolution: {resolution}m, Steps: {len(steps)}")
+
+            # Step 1: Load the VTU mesh (cached to avoid duplicate reads)
+            step_start = time.time()
+            points, velocity = VTULoader._load_vtu_raw(vtu_path, velocity_field_name)
+            points = points.copy()
+            velocity = velocity.copy()
+            update_progress("Loading VTU file", time.time() - step_start)
+
+            print(f"  VTU contains {len(points):,} points")
+            print(f"  VTU bounds (original): X[{points[:, 0].min():.1f}, {points[:, 0].max():.1f}], "
+                  f"Y[{points[:, 1].min():.1f}, {points[:, 1].max():.1f}], "
+                  f"Z[{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
+
+            # Step 2: Coordinate conversion
+            step_start = time.time()
+            if convert_coords:
+                # Convert from Z-up (OpenFOAM/CFD) to Y-up (Three.js/backend)
+                points = np.column_stack([
+                    points[:, 0],   # X stays X
+                    points[:, 2],   # Z becomes Y (up)
+                    -points[:, 1],  # Y becomes -Z (negated to match STL transform)
+                ])
+                velocity = np.column_stack([
+                    velocity[:, 0],   # vx stays vx
+                    velocity[:, 2],   # vz becomes vy (up)
+                    -velocity[:, 1],  # vy becomes -vz (negated)
+                ])
+
+            # Apply offset if provided
+            if offset is not None:
+                offset_arr = np.array(offset)
+                points = points + offset_arr
+            update_progress("Coordinate conversion", time.time() - step_start)
+
+            print(f"  VTU bounds (converted): X[{points[:, 0].min():.1f}, {points[:, 0].max():.1f}], "
+                  f"Y[{points[:, 1].min():.1f}, {points[:, 1].max():.1f}], "
+                  f"Z[{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
+
+            # Calculate grid dimensions
+            size = bounds_max - bounds_min
+            nx = max(2, int(size.x / resolution) + 1)
+            ny = max(2, int(size.y / resolution) + 1)
+            nz = max(2, int(size.z / resolution) + 1)
+            total_cells = nx * ny * nz
+
+            print(f"  Creating grid: {nx}x{ny}x{nz} = {total_cells:,} cells")
+
+            # Create the regular grid
+            x_coords = np.linspace(bounds_min.x, bounds_max.x, nx)
+            y_coords = np.linspace(bounds_min.y, bounds_max.y, ny)
+            z_coords = np.linspace(bounds_min.z, bounds_max.z, nz)
+
+            # Create meshgrid of target points
+            grid_x, grid_y, grid_z = np.meshgrid(x_coords, y_coords, z_coords, indexing='ij')
+            grid_points = np.column_stack([
+                grid_x.ravel(),
+                grid_y.ravel(),
+                grid_z.ravel()
             ])
-            velocity = np.column_stack([
-                velocity[:, 0],   # vx stays vx
-                velocity[:, 2],   # vz becomes vy (up)
-                -velocity[:, 1],  # vy becomes -vz (negated)
-            ])
-            print("  Converted coordinates from Z-up to Y-up (with Y negation)")
 
-        # Apply offset if provided
-        if offset is not None:
-            offset_arr = np.array(offset)
-            points = points + offset_arr
-            print(f"  Applied offset: {offset}")
+            # Step 3: Build interpolators (expensive Delaunay triangulation)
+            step_start = time.time()
+            if pbar:
+                pbar.set_postfix_str("Building Delaunay triangulation... (slow)")
+            else:
+                print("  [3/6] Building Delaunay triangulation... (this may take a while)")
 
-        print(f"  VTU bounds (converted): X[{points[:, 0].min():.1f}, {points[:, 0].max():.1f}], "
-              f"Y[{points[:, 1].min():.1f}, {points[:, 1].max():.1f}], "
-              f"Z[{points[:, 2].min():.1f}, {points[:, 2].max():.1f}]")
+            linear_interp = LinearNDInterpolator(points, velocity, fill_value=np.nan)
+            nearest_interp = NearestNDInterpolator(points, velocity)
+            update_progress("Building Delaunay triangulation", time.time() - step_start)
 
-        # Report scene bounds
-        print(f"  Scene bounds: X[{bounds_min.x:.1f}, {bounds_max.x:.1f}], "
-              f"Y[{bounds_min.y:.1f}, {bounds_max.y:.1f}], "
-              f"Z[{bounds_min.z:.1f}, {bounds_max.z:.1f}]")
+            # Step 4: Interpolate velocity field
+            step_start = time.time()
+            if pbar:
+                pbar.set_postfix_str(f"Interpolating {total_cells:,} grid points...")
+            wind_data = linear_interp(grid_points).astype(np.float32)
+            update_progress("Interpolating velocity field", time.time() - step_start)
 
-        # Calculate grid dimensions
-        size = bounds_max - bounds_min
-        nx = max(2, int(size.x / resolution) + 1)
-        ny = max(2, int(size.y / resolution) + 1)
-        nz = max(2, int(size.z / resolution) + 1)
+            # Step 5: Fill NaN values with nearest neighbor interpolation
+            step_start = time.time()
+            nan_mask = np.isnan(wind_data[:, 0])
+            nan_count = int(np.sum(nan_mask))
 
-        print(f"  Creating grid: {nx}x{ny}x{nz} = {nx*ny*nz} cells")
+            if nan_count > 0:
+                pct = 100 * nan_count / len(grid_points)
+                if pbar:
+                    pbar.set_postfix_str(f"Filling {nan_count:,} points ({pct:.1f}%) outside domain...")
+                wind_data[nan_mask] = nearest_interp(grid_points[nan_mask]).astype(np.float32)
+                update_progress("Filling outside CFD domain", time.time() - step_start)
+                print(f"  Filled {nan_count:,} points ({pct:.1f}%) outside CFD domain")
+            else:
+                update_progress("Filling outside CFD domain", time.time() - step_start)
 
-        # Create the regular grid
-        x_coords = np.linspace(bounds_min.x, bounds_max.x, nx)
-        y_coords = np.linspace(bounds_min.y, bounds_max.y, ny)
-        z_coords = np.linspace(bounds_min.z, bounds_max.z, nz)
+            # Reshape to grid dimensions
+            wind_data = wind_data.reshape((nx, ny, nz, 3))
 
-        # Create meshgrid of target points
-        grid_x, grid_y, grid_z = np.meshgrid(x_coords, y_coords, z_coords, indexing='ij')
-        grid_points = np.column_stack([
-            grid_x.ravel(),
-            grid_y.ravel(),
-            grid_z.ravel()
-        ])
+            # Step 6: Calculate turbulence from velocity gradient magnitude
+            step_start = time.time()
+            turbulence_data = VTULoader._compute_turbulence(wind_data, resolution)
+            update_progress("Computing turbulence", time.time() - step_start)
 
-        # Interpolate velocity field
-        # Build interpolators once (expensive Delaunay triangulation) then reuse for all components
-        print("  Building interpolators (Delaunay triangulation)...")
+            speed = np.linalg.norm(wind_data, axis=-1)
+            print(f"  Wind speed range: {speed.min():.2f} - {speed.max():.2f} m/s")
+            print(f"  Turbulence range: {turbulence_data.min():.3f} - {turbulence_data.max():.3f}")
 
-        # Build linear interpolator for all 3 components at once
-        # This is more efficient than building 3 separate triangulations
-        linear_interp = LinearNDInterpolator(points, velocity, fill_value=np.nan)
-        nearest_interp = NearestNDInterpolator(points, velocity)
+            total_elapsed = time.time() - total_start
+            print(f"  VTU processing complete in {total_elapsed:.1f}s\n")
 
-        print("  Interpolating velocity field...")
-        wind_data = linear_interp(grid_points).astype(np.float32)
+            return WindField(wind_data, turbulence_data, bounds_min, bounds_max)
 
-        # Fill NaN values with nearest neighbor interpolation
-        nan_mask = np.isnan(wind_data[:, 0])  # Check first component (all have same NaN pattern)
-        nan_count = int(np.sum(nan_mask))
-
-        if nan_count > 0:
-            pct = 100 * nan_count / len(grid_points)
-            print(f"    {nan_count} points ({pct:.1f}%) outside CFD domain, filling with nearest...")
-            wind_data[nan_mask] = nearest_interp(grid_points[nan_mask]).astype(np.float32)
-
-        # Reshape to grid dimensions
-        wind_data = wind_data.reshape((nx, ny, nz, 3))
-
-        # Calculate turbulence from velocity gradient magnitude
-        print("  Computing turbulence field...")
-        turbulence_data = VTULoader._compute_turbulence(wind_data, resolution)
-
-        speed = np.linalg.norm(wind_data, axis=-1)
-        print(f"  Wind speed range: {speed.min():.2f} - {speed.max():.2f} m/s")
-        print(f"  Turbulence range: {turbulence_data.min():.3f} - {turbulence_data.max():.3f}")
-
-        return WindField(wind_data, turbulence_data, bounds_min, bounds_max)
+        finally:
+            if pbar:
+                pbar.close()
 
     @staticmethod
     def _compute_turbulence(wind_data: np.ndarray, resolution: float) -> np.ndarray:
