@@ -239,17 +239,6 @@ export default function MetricsPanel() {
             />
 
             <MetricCard
-              label="Crash Risk"
-              naiveValue={summary.naive.crash_probability}
-              optimizedValue={summary.optimized.crash_probability}
-              unit="%"
-              lowerIsBetter={true}
-              decimals={2}
-              icon={<ShieldIcon />}
-              animationDelay={300}
-            />
-
-            <MetricCard
               label="Avg Speed"
               naiveValue={summary.naive.average_ground_speed}
               optimizedValue={summary.optimized.average_ground_speed}
@@ -258,17 +247,6 @@ export default function MetricsPanel() {
               decimals={1}
               icon={<SpeedIcon />}
               animationDelay={400}
-            />
-
-            <MetricCard
-              label="Turbulence Zones"
-              naiveValue={summary.naive.turbulence_zones_crossed}
-              optimizedValue={summary.optimized.turbulence_zones_crossed}
-              unit=""
-              lowerIsBetter={true}
-              decimals={0}
-              icon={<WindIcon />}
-              animationDelay={500}
             />
           </div>
 
