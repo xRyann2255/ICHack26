@@ -106,14 +106,14 @@ function App() {
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.transform = 'scale(1.05)'
-            e.currentTarget.style.background = visibility.windField 
-              ? 'rgba(78, 205, 196, 1)' 
+            e.currentTarget.style.background = visibility.windField
+              ? 'rgba(78, 205, 196, 1)'
               : 'rgba(0, 0, 0, 0.85)'
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.transform = 'scale(1)'
-            e.currentTarget.style.background = visibility.windField 
-              ? 'rgba(78, 205, 196, 0.9)' 
+            e.currentTarget.style.background = visibility.windField
+              ? 'rgba(78, 205, 196, 0.9)'
               : 'rgba(0, 0, 0, 0.75)'
           }}
           onClick={() => setVisibility({ ...visibility, windField: !visibility.windField })}
