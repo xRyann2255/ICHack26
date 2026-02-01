@@ -188,11 +188,12 @@ function PlanningCameraController() {
 // ============================================================================
 
 function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
-  const { windFieldData, selectedStart, selectedEnd } = useScene()
+  const { windFieldData, selectedStart, selectedEnd, sceneBounds } = useScene()
 
   return (
     <>
-      {/* HDR Environment */}
+      {/* HDR Environment - fallback to color if HDR fails */}
+      <color attach="background" args={['#87CEEB']} />
       <Environment files="/hdri/sky.hdr" background backgroundIntensity={1} environmentIntensity={0.8} />
 
       {/* Lighting */}
@@ -224,8 +225,8 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
         />
       )}
 
-      {/* Clickable plane for point selection */}
-      <ClickablePlane />
+      {/* Clickable plane for point selection - only render if bounds available */}
+      {sceneBounds && <ClickablePlane />}
 
       {/* Start marker */}
       {selectedStart && (
@@ -270,9 +271,13 @@ function PlanningOverlay() {
     selectedEnd,
     confirmRoute,
     exitPlanningMode,
+    isDataLoaded,
   } = useScene()
 
   const getMessage = () => {
+    if (!isDataLoaded) {
+      return 'Loading scene data...'
+    }
     switch (routePlanningMode) {
       case 'selecting_start':
         return 'Click on the map to set the START point'
@@ -364,18 +369,6 @@ function PlanningOverlay() {
 // ============================================================================
 
 export default function RoutePlanningView({ showWindField = true }: RoutePlanningViewProps) {
-  const { isDataLoaded } = useScene()
-
-  // Show loading state if scene data isn't loaded yet
-  if (!isDataLoaded) {
-    return (
-      <div style={styles.loadingScreen}>
-        <div style={styles.loadingSpinner} />
-        <div style={styles.loadingScreenText}>Loading scene data...</div>
-      </div>
-    )
-  }
-
   return (
     <div style={styles.container}>
       <Canvas
