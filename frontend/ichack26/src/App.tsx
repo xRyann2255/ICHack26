@@ -14,6 +14,7 @@ type ViewMode = 'cinematic' | 'split' | 'combined'
 
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('cinematic')
+  const [simulationStarted, setSimulationStarted] = useState(false)
 
   // UI Control States
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
@@ -22,7 +23,7 @@ function App() {
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
       <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }}>
         {/* WebSocket connection status overlay */}
-        <ConnectionStatus />
+        {!simulationStarted && <ConnectionStatus />}
 
         <div style={viewToggleStyles.container}>
           <button
@@ -129,6 +130,7 @@ function App() {
             routeCreationSpeed={0.02}
             transitionDuration={2000}
             visibility={visibility}
+            onSimulationStart={() => setSimulationStarted(true)}
           />
         ) : viewMode === 'split' ? (
           <>

@@ -120,7 +120,7 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
         heading={frame?.heading || null}
         followDistance={50}
         followHeight={25}
-        smoothing={1.0}
+        smoothing={0.05}
         active={true}
       />
 
@@ -154,9 +154,6 @@ export default function DroneFlightView({
     <div style={styles.container}>
       {/* Left panel - Naive route */}
       <div style={styles.panel}>
-        <div style={{ ...styles.label, backgroundColor: 'rgba(255, 107, 107, 0.9)' }}>
-          Naive Route
-        </div>
         <Canvas camera={{
           position: [300, 200, 300],
           fov: 60,
@@ -179,9 +176,6 @@ export default function DroneFlightView({
 
       {/* Right panel - Optimized route */}
       <div style={styles.panel}>
-        <div style={{ ...styles.label, backgroundColor: 'rgba(78, 205, 196, 0.9)' }}>
-          Wind-Optimized Route
-        </div>
         <Canvas camera={{
           position: [300, 200, 300],
           fov: 60,

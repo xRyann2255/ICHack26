@@ -21,6 +21,12 @@ import type {
 // Types
 // ============================================================================
 
+export interface SpeedSample {
+  time: number;
+  groundspeed: number;
+  airspeed: number;
+}
+
 export interface SimulationState {
   status: 'idle' | 'loading' | 'paths_received' | 'simulating' | 'complete';
   paths: PathsData | null;
@@ -35,6 +41,10 @@ export interface SimulationState {
   flightSummary: {
     naive: FlightSummary | null;
     optimized: FlightSummary | null;
+  };
+  speedHistory: {
+    naive: SpeedSample[];
+    optimized: SpeedSample[];
   };
 }
 
@@ -99,6 +109,7 @@ const INITIAL_SIMULATION_STATE: SimulationState = {
   currentFrame: { naive: null, optimized: null },
   metrics: { naive: null, optimized: null },
   flightSummary: { naive: null, optimized: null },
+  speedHistory: { naive: [], optimized: [] },
 };
 
 // ============================================================================
@@ -198,14 +209,27 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
               console.log(`[WS] Frame ${message.route}: t=${message.data.time.toFixed(2)}, pos=(${message.data.position[0].toFixed(1)},${message.data.position[1].toFixed(1)},${message.data.position[2].toFixed(1)})`);
             }
 
-            // Update current frame for the appropriate route (removed throttling that could cause issues)
-            setSimulation((prev) => ({
-              ...prev,
-              currentFrame: {
-                ...prev.currentFrame,
-                [message.route]: message.data,
-              },
-            }));
+            // Update current frame and collect speed sample
+            setSimulation((prev) => {
+              const route = message.route as 'naive' | 'optimized';
+              const newSample: SpeedSample = {
+                time: message.data.time,
+                groundspeed: message.data.groundspeed,
+                airspeed: message.data.airspeed,
+              };
+
+              return {
+                ...prev,
+                currentFrame: {
+                  ...prev.currentFrame,
+                  [route]: message.data,
+                },
+                speedHistory: {
+                  ...prev.speedHistory,
+                  [route]: [...prev.speedHistory[route], newSample],
+                },
+              };
+            });
             break;
 
           case 'simulation_end':

@@ -192,9 +192,6 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
 
   return (
     <>
-      {/* HDR Environment - fallback to color if HDR fails */}
-      <color attach="background" args={['#87CEEB']} />
-      <Environment files="/hdri/sky.hdr" background backgroundIntensity={1} environmentIntensity={0.8} />
 
       {/* Lighting */}
       <directionalLight

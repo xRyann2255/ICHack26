@@ -5,7 +5,7 @@
  */
 
 import { createContext, useContext, type ReactNode, useMemo, useCallback, useState } from 'react';
-import { useWebSocket, type SimulationState, type PlaybackControl } from '../hooks/useWebSocket';
+import { useWebSocket, type SimulationState, type PlaybackControl, type SpeedSample } from '../hooks/useWebSocket';
 import type {
   ConnectionStatus,
   SceneData,
@@ -56,6 +56,10 @@ export interface SceneContextValue {
   metrics: {
     naive: RouteMetrics | null;
     optimized: RouteMetrics | null;
+  };
+  speedHistory: {
+    naive: SpeedSample[];
+    optimized: SpeedSample[];
   };
 
   // Simulation control
@@ -205,6 +209,7 @@ export function SceneProvider({
       paths: ws.simulation.paths,
       currentFrame: ws.simulation.currentFrame,
       metrics: ws.simulation.metrics,
+      speedHistory: ws.simulation.speedHistory,
 
       // Simulation control
       startSimulation: ws.startSimulation,

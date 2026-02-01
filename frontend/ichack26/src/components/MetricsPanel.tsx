@@ -9,6 +9,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useScene } from '../context/SceneContext';
 import MetricCard from './MetricCard';
+import SpeedGraph from './SpeedGraph';
 
 // ============================================================================
 // Icons
@@ -85,10 +86,13 @@ function SummaryStat({ value, label, delay = 0 }: SummaryStatProps) {
 // Main Component
 // ============================================================================
 
+type TabType = 'comparison' | 'speed';
+
 export default function MetricsPanel() {
-  const { simulation, metrics } = useScene();
+  const { simulation, metrics, speedHistory } = useScene();
   const [isVisible, setIsVisible] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('comparison');
 
   // Only show when simulation is complete with both metrics
   const showPanel = simulation.status === 'complete' && metrics.naive && metrics.optimized;
@@ -161,8 +165,33 @@ export default function MetricsPanel() {
 
       {!isMinimized && (
         <>
-          {/* Summary Box - Highlighted at top */}
-          <div style={styles.summaryBox}>
+          {/* Tab Navigation */}
+          <div style={styles.tabContainer}>
+            <button
+              style={{
+                ...styles.tab,
+                ...(activeTab === 'comparison' ? styles.tabActive : {}),
+              }}
+              onClick={() => setActiveTab('comparison')}
+            >
+              Comparison
+            </button>
+            <button
+              style={{
+                ...styles.tab,
+                ...(activeTab === 'speed' ? styles.tabActive : {}),
+              }}
+              onClick={() => setActiveTab('speed')}
+            >
+              Speed Graph
+            </button>
+          </div>
+
+          {/* Comparison Tab Content */}
+          {activeTab === 'comparison' && (
+            <>
+              {/* Summary Box - Highlighted at top */}
+              <div style={styles.summaryBox}>
             <div style={styles.summaryTitle}>Optimization Benefits</div>
             <div style={styles.summaryStats}>
               {summary.timeSaved > 0 && (
@@ -236,45 +265,55 @@ export default function MetricsPanel() {
             />
           </div>
 
-          {/* Additional Details (expandable) */}
-          <div style={styles.detailsSection}>
-            <div style={styles.detailRow}>
-              <span style={styles.detailLabel}>Max Turbulence</span>
-              <span style={styles.detailValues}>
-                <span style={{ color: '#ff6b6b' }}>
-                  {summary.naive.max_turbulence_encountered.toFixed(2)}
-                </span>
-                <span style={styles.detailSeparator}>vs</span>
-                <span style={{ color: '#4ecdc4' }}>
-                  {summary.optimized.max_turbulence_encountered.toFixed(2)}
-                </span>
-              </span>
-            </div>
-            <div style={styles.detailRow}>
-              <span style={styles.detailLabel}>Max Wind Speed</span>
-              <span style={styles.detailValues}>
-                <span style={{ color: '#ff6b6b' }}>
-                  {summary.naive.max_wind_speed_encountered.toFixed(1)} m/s
-                </span>
-                <span style={styles.detailSeparator}>vs</span>
-                <span style={{ color: '#4ecdc4' }}>
-                  {summary.optimized.max_wind_speed_encountered.toFixed(1)} m/s
-                </span>
-              </span>
-            </div>
-            <div style={styles.detailRow}>
-              <span style={styles.detailLabel}>Headwind Segments</span>
-              <span style={styles.detailValues}>
-                <span style={{ color: '#ff6b6b' }}>
-                  {summary.naive.headwind_segments}
-                </span>
-                <span style={styles.detailSeparator}>vs</span>
-                <span style={{ color: '#4ecdc4' }}>
-                  {summary.optimized.headwind_segments}
-                </span>
-              </span>
-            </div>
-          </div>
+              {/* Additional Details (expandable) */}
+              <div style={styles.detailsSection}>
+                <div style={styles.detailRow}>
+                  <span style={styles.detailLabel}>Max Turbulence</span>
+                  <span style={styles.detailValues}>
+                    <span style={{ color: '#ff6b6b' }}>
+                      {summary.naive.max_turbulence_encountered.toFixed(2)}
+                    </span>
+                    <span style={styles.detailSeparator}>vs</span>
+                    <span style={{ color: '#4ecdc4' }}>
+                      {summary.optimized.max_turbulence_encountered.toFixed(2)}
+                    </span>
+                  </span>
+                </div>
+                <div style={styles.detailRow}>
+                  <span style={styles.detailLabel}>Max Wind Speed</span>
+                  <span style={styles.detailValues}>
+                    <span style={{ color: '#ff6b6b' }}>
+                      {summary.naive.max_wind_speed_encountered.toFixed(1)} m/s
+                    </span>
+                    <span style={styles.detailSeparator}>vs</span>
+                    <span style={{ color: '#4ecdc4' }}>
+                      {summary.optimized.max_wind_speed_encountered.toFixed(1)} m/s
+                    </span>
+                  </span>
+                </div>
+                <div style={styles.detailRow}>
+                  <span style={styles.detailLabel}>Headwind Segments</span>
+                  <span style={styles.detailValues}>
+                    <span style={{ color: '#ff6b6b' }}>
+                      {summary.naive.headwind_segments}
+                    </span>
+                    <span style={styles.detailSeparator}>vs</span>
+                    <span style={{ color: '#4ecdc4' }}>
+                      {summary.optimized.headwind_segments}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Speed Graph Tab Content */}
+          {activeTab === 'speed' && (
+            <SpeedGraph
+              naiveData={speedHistory.naive}
+              optimizedData={speedHistory.optimized}
+            />
+          )}
         </>
       )}
     </div>
@@ -291,7 +330,7 @@ const styles: Record<string, React.CSSProperties> = {
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
-    left: 30,
+    left: 20,
     margin: 15,
     maxHeight: '95%',
     width: '95%',
@@ -309,6 +348,28 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '12px',
     borderBottom: '1px solid #333',
     cursor: 'pointer',
+  },
+  tabContainer: {
+    display: 'flex',
+    gap: 0,
+    padding: '8px 12px 0',
+    borderBottom: '1px solid #333',
+  },
+  tab: {
+    padding: '8px 16px',
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: '#888',
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: 'pointer',
+    borderBottom: '2px solid transparent',
+    transition: 'color 0.2s, border-color 0.2s',
+    marginBottom: -1,
+  },
+  tabActive: {
+    color: '#4ecdc4',
+    borderBottomColor: '#4ecdc4',
   },
   headerContent: {
     flex: 1,
