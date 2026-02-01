@@ -17,6 +17,8 @@ function App() {
 
   // UI Control States
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
+  const [windDirection, setWindDirection] = useState(0) // 0-15 index into WIND_DIRECTIONS
+  const [showControls, setShowControls] = useState(true)
 
   return (
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
@@ -24,7 +26,6 @@ function App() {
         {/* WebSocket connection status overlay */}
         <ConnectionStatus />
 
-        {/* View mode toggle
         <div style={viewToggleStyles.container}>
           <button
             style={{
@@ -53,7 +54,7 @@ function App() {
           >
             Combined
           </button>
-          {/* Toggle controls visibility
+
           <button
             style={{
               ...viewToggleStyles.button,
@@ -66,12 +67,13 @@ function App() {
             {showControls ? 'Hide UI' : 'Show UI'}
           </button>
         </div>
-         */}
 
         {/* UI Controls (shown in non-cinematic modes) */}
         <CollapsibleSidebar
           visibility={visibility}
           onVisibilityChange={setVisibility}
+          windDirection={windDirection}
+          onWindDirectionChange={setWindDirection}
         />
 
         {/* 3D View based on mode */}

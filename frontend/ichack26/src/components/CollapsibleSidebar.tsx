@@ -31,6 +31,10 @@ interface CollapsibleSidebarProps {
   visibility: VisibilityState;
   onVisibilityChange: (visibility: VisibilityState) => void;
   onRestart?: () => void;
+  /** Current wind direction index (0-15) */
+  windDirection?: number;
+  /** Callback when wind direction changes */
+  onWindDirectionChange?: (directionIndex: number) => void;
 }
 
 // ============================================================================
@@ -89,6 +93,35 @@ const SPEED_OPTIONS = [
 ];
 
 // ============================================================================
+// Wind Direction Options (16 compass points, 22.5° apart)
+// ============================================================================
+
+export interface WindDirection {
+  label: string;
+  shortLabel: string;
+  degrees: number;
+}
+
+export const WIND_DIRECTIONS: WindDirection[] = [
+  { label: 'North', shortLabel: 'N', degrees: 0 },
+  { label: 'North-Northeast', shortLabel: 'NNE', degrees: 22.5 },
+  { label: 'Northeast', shortLabel: 'NE', degrees: 45 },
+  { label: 'East-Northeast', shortLabel: 'ENE', degrees: 67.5 },
+  { label: 'East', shortLabel: 'E', degrees: 90 },
+  { label: 'East-Southeast', shortLabel: 'ESE', degrees: 112.5 },
+  { label: 'Southeast', shortLabel: 'SE', degrees: 135 },
+  { label: 'South-Southeast', shortLabel: 'SSE', degrees: 157.5 },
+  { label: 'South', shortLabel: 'S', degrees: 180 },
+  { label: 'South-Southwest', shortLabel: 'SSW', degrees: 202.5 },
+  { label: 'Southwest', shortLabel: 'SW', degrees: 225 },
+  { label: 'West-Southwest', shortLabel: 'WSW', degrees: 247.5 },
+  { label: 'West', shortLabel: 'W', degrees: 270 },
+  { label: 'West-Northwest', shortLabel: 'WNW', degrees: 292.5 },
+  { label: 'Northwest', shortLabel: 'NW', degrees: 315 },
+  { label: 'North-Northwest', shortLabel: 'NNW', degrees: 337.5 },
+];
+
+// ============================================================================
 // Collapsible Section Component
 // ============================================================================
 
@@ -123,6 +156,8 @@ export default function CollapsibleSidebar({
   visibility,
   onVisibilityChange,
   onRestart,
+  windDirection = 0,
+  onWindDirectionChange,
 }: CollapsibleSidebarProps) {
   const {
     sceneBounds,
@@ -139,7 +174,19 @@ export default function CollapsibleSidebar({
   // Expansion states - all minimized by default
   const [controlsExpanded, setControlsExpanded] = useState(false);
   const [playbackExpanded, setPlaybackExpanded] = useState(false);
-  const [visibilityExpanded, setVisibilityExpanded] = useState(false);
+  const [windExpanded, setWindExpanded] = useState(false);
+
+  // Local wind direction state (used if no callback provided)
+  const [localWindDirection, setLocalWindDirection] = useState(windDirection);
+  const currentWindDirection = onWindDirectionChange ? windDirection : localWindDirection;
+
+  const handleWindDirectionChange = useCallback((index: number) => {
+    if (onWindDirectionChange) {
+      onWindDirectionChange(index);
+    } else {
+      setLocalWindDirection(index);
+    }
+  }, [onWindDirectionChange]);
 
   // Control Panel state
   const [startPos, setStartPos] = useState<Position>({ x: 180, y: 180, z: 50 });
@@ -418,7 +465,76 @@ export default function CollapsibleSidebar({
           <div style={styles.completeIndicator}>Complete</div>
         )}
       </CollapsibleSection>
-      
+
+      {/* Wind Direction Section */}
+      <CollapsibleSection
+        title="Wind Direction"
+        icon={<WindIcon />}
+        isExpanded={windExpanded}
+        onToggle={() => setWindExpanded(!windExpanded)}
+      >
+        {/* Compass display */}
+        <div style={styles.compassContainer}>
+          <div style={styles.compass}>
+            {/* Compass rose background */}
+            <div style={styles.compassRose}>
+              {/* Cardinal direction labels */}
+              <span style={{ ...styles.compassLabel, top: 2, left: '50%', transform: 'translateX(-50%)' }}>N</span>
+              <span style={{ ...styles.compassLabel, right: 2, top: '50%', transform: 'translateY(-50%)' }}>E</span>
+              <span style={{ ...styles.compassLabel, bottom: 2, left: '50%', transform: 'translateX(-50%)' }}>S</span>
+              <span style={{ ...styles.compassLabel, left: 2, top: '50%', transform: 'translateY(-50%)' }}>W</span>
+            </div>
+
+            {/* Direction buttons arranged in a circle */}
+            {WIND_DIRECTIONS.map((dir, index) => {
+              const angle = (dir.degrees - 90) * (Math.PI / 180); // -90 to start from top
+              const radius = 38; // Distance from center
+              const x = Math.cos(angle) * radius;
+              const y = Math.sin(angle) * radius;
+              const isSelected = currentWindDirection === index;
+
+              return (
+                <button
+                  key={dir.shortLabel}
+                  style={{
+                    ...styles.compassPoint,
+                    left: `calc(50% + ${x}px)`,
+                    top: `calc(50% + ${y}px)`,
+                    transform: 'translate(-50%, -50%)',
+                    backgroundColor: isSelected ? '#4a9eff' : 'rgba(255,255,255,0.1)',
+                    borderColor: isSelected ? '#4a9eff' : 'rgba(255,255,255,0.2)',
+                  }}
+                  onClick={() => handleWindDirectionChange(index)}
+                  title={`${dir.label} (${dir.degrees}°)`}
+                >
+                  {index % 2 === 0 ? dir.shortLabel : ''}
+                </button>
+              );
+            })}
+
+            {/* Center indicator showing current direction */}
+            <div style={styles.compassCenter}>
+              <div
+                style={{
+                  ...styles.compassArrow,
+                  transform: `rotate(${WIND_DIRECTIONS[currentWindDirection].degrees}deg)`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Current direction label */}
+        <div style={styles.windDirectionLabel}>
+          <span style={styles.windDirectionText}>
+            {WIND_DIRECTIONS[currentWindDirection].label}
+          </span>
+          <span style={styles.windDirectionDegrees}>
+            {WIND_DIRECTIONS[currentWindDirection].degrees}°
+          </span>
+        </div>
+      </CollapsibleSection>
+
     </div>
   );
 }
@@ -491,6 +607,14 @@ function RestartIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" />
+    </svg>
+  );
+}
+
+function WindIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M14.5 17c0 1.65-1.35 3-3 3s-3-1.35-3-3h2c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1H2v-2h9.5c1.65 0 3 1.35 3 3zM19 6.5C19 4.57 17.43 3 15.5 3S12 4.57 12 6.5h2c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5S16.33 8 15.5 8H2v2h13.5c1.93 0 3.5-1.57 3.5-3.5zm-.5 4.5H2v2h16.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5v2c1.93 0 3.5-1.57 3.5-3.5S20.43 11 18.5 11z" />
     </svg>
   );
 }
@@ -770,5 +894,87 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     fontSize: 11,
     transition: 'color 0.2s',
+  },
+  // Compass styles
+  compassContainer: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '12px 0',
+  },
+  compass: {
+    position: 'relative',
+    width: 100,
+    height: 100,
+  },
+  compassRose: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: '50%',
+    border: '2px solid rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  compassLabel: {
+    position: 'absolute',
+    fontSize: 9,
+    color: '#666',
+    fontWeight: 600,
+  },
+  compassPoint: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderRadius: '50%',
+    border: '1px solid',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 7,
+    fontWeight: 600,
+    color: '#fff',
+    transition: 'all 0.15s',
+    padding: 0,
+  },
+  compassCenter: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    width: 30,
+    height: 30,
+    borderRadius: '50%',
+    backgroundColor: 'rgba(74, 158, 255, 0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compassArrow: {
+    width: 0,
+    height: 0,
+    borderLeft: '5px solid transparent',
+    borderRight: '5px solid transparent',
+    borderBottom: '20px solid #4a9eff',
+    transformOrigin: 'center 15px',
+    transition: 'transform 0.3s ease-out',
+  },
+  windDirectionLabel: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'baseline',
+    gap: 8,
+    paddingBottom: 8,
+  },
+  windDirectionText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: 500,
+  },
+  windDirectionDegrees: {
+    fontSize: 10,
+    color: '#4a9eff',
+    fontFamily: 'monospace',
   },
 };
