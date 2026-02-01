@@ -5,7 +5,7 @@
  * by clicking on the 3D terrain.
  */
 
-import { useRef, useCallback, Suspense, useState, useEffect } from 'react'
+import { useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrbitControls, Environment, Html } from '@react-three/drei'
 import * as THREE from 'three'
@@ -28,49 +28,72 @@ interface MarkerProps {
   color: string
   label: string
   pulseColor: string
+  buildings?: { min: [number, number, number]; max: [number, number, number] }[]
 }
 
 // ============================================================================
 // Marker Component
 // ============================================================================
 
-function Marker({ position, color, label, pulseColor }: MarkerProps) {
+function Marker({ position, color, label, pulseColor, buildings = [] }: MarkerProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [hovered, setHovered] = useState(false)
 
-  const baseHeight = 20 // Height just above floor
+  // Calculate ground level based on buildings under this position
+  const groundLevel = useMemo(() => {
+    const x = position[0]
+    const z = position[2]
+    let maxHeight = 0
+
+    for (const building of buildings) {
+      // Check if position is within building footprint (x and z)
+      if (
+        x >= building.min[0] &&
+        x <= building.max[0] &&
+        z >= building.min[2] &&
+        z <= building.max[2]
+      ) {
+        // Use the top of the building (max[1] is the Y height)
+        maxHeight = Math.max(maxHeight, building.max[1])
+      }
+    }
+
+    return maxHeight
+  }, [position, buildings])
+
+  const markerHeight = 20 // Height above ground level
 
   useFrame((state) => {
     if (meshRef.current) {
-      // Gentle floating animation just above the floor
-      meshRef.current.position.y = baseHeight + Math.sin(state.clock.elapsedTime * 2) * 2
+      // Gentle floating animation above ground level
+      meshRef.current.position.y = groundLevel + markerHeight + Math.sin(state.clock.elapsedTime * 2) * 2
     }
   })
 
   return (
     <group position={[position[0], 0, position[2]]}>
       {/* Ground ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 1, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundLevel + 1, 0]}>
         <ringGeometry args={[8, 12, 32]} />
         <meshBasicMaterial color={color} transparent opacity={0.6} />
       </mesh>
 
       {/* Pulsing outer ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.5, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundLevel + 0.5, 0]}>
         <ringGeometry args={[12, 14, 32]} />
         <meshBasicMaterial color={pulseColor} transparent opacity={0.3} />
       </mesh>
 
       {/* Short vertical beam */}
-      <mesh position={[0, baseHeight / 2, 0]}>
-        <cylinderGeometry args={[1, 1, baseHeight, 8]} />
+      <mesh position={[0, groundLevel + markerHeight / 2, 0]}>
+        <cylinderGeometry args={[1, 1, markerHeight, 8]} />
         <meshBasicMaterial color={color} transparent opacity={0.4} />
       </mesh>
 
-      {/* Floating marker just above floor */}
+      {/* Floating marker above ground level */}
       <mesh
         ref={meshRef}
-        position={[0, baseHeight, 0]}
+        position={[0, groundLevel + markerHeight, 0]}
         onPointerOver={() => setHovered(true)}
         onPointerOut={() => setHovered(false)}
       >
@@ -84,7 +107,7 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
 
       {/* Label */}
       <Html
-        position={[0, baseHeight + 20, 0]}
+        position={[0, groundLevel + markerHeight + 20, 0]}
         center
         style={{
           color: '#fff',
@@ -190,7 +213,8 @@ function PlanningCameraController() {
 // ============================================================================
 
 function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
-  const { windFieldData, selectedStart, selectedEnd, sceneBounds } = useScene()
+  const { windFieldData, selectedStart, selectedEnd, sceneBounds, sceneData } = useScene()
+  const buildings = sceneData?.buildings ?? []
 
   return (
     <>
@@ -234,6 +258,7 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
           color="#4ecdc4"
           pulseColor="#2dcea8"
           label="START"
+          buildings={buildings}
         />
       )}
 
@@ -244,6 +269,7 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
           color="#ff6b6b"
           pulseColor="#ff4757"
           label="END"
+          buildings={buildings}
         />
       )}
 
