@@ -92,7 +92,6 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
           streamlineCount={500}
           integrationSteps={20}
           stepSize={8.0}
-          opacity={0.75}
           arrowSize={4.0}
         />
       )}

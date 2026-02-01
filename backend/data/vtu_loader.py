@@ -130,9 +130,6 @@ class VTULoader:
         print(f"\n=== Using existing wind points ===")
         print(f"Number of points: {len(points):,}")
 
-        # Turbulence is zero
-        turbulence = np.zeros(len(points), dtype=np.float32)
-
         return WindField(points, velocity)
 
 

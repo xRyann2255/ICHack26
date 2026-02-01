@@ -143,7 +143,6 @@ export default function Scene({
           streamlineCount={600}
           integrationSteps={25}
           stepSize={6.0}
-          opacity={0.85}
           arrowSize={4.5}
         />
       )}

@@ -193,10 +193,10 @@ export default function WindField({
         frustumCulled={false}
       >
         <meshBasicMaterial
-          vertexColors
-          transparent
+          vertexColors={true}
+          transparent={true}
           opacity={opacity}
-          side={THREE.DoubleSide}
+          depthWrite={false}
         />
       </instancedMesh>
     </group>
