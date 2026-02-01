@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef } from 'react'
-import { OrbitControls, Grid, Environment } from '@react-three/drei'
+import { OrbitControls, Grid } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import Terrain from './Terrain'
 import WindField from './WindField'
@@ -18,10 +18,6 @@ export interface SceneProps {
   visibility?: VisibilityState
   /** Enable post-processing effects */
   enableEffects?: boolean
-  /** Path to HDR file for environment lighting (or preset name) */
-  hdrPath?: string
-  /** Environment intensity multiplier */
-  envIntensity?: number
 }
 
 // ============================================================================
@@ -40,11 +36,10 @@ function LoadingBox() {
 function Lighting() {
   return (
     <>
-      {/* Directional sun light for shadows */}
+      <ambientLight intensity={0.4} />
       <directionalLight
         position={[150, 300, 150]}
-        intensity={1.5}
-        color="#fffaf0"
+        intensity={1.2}
         castShadow
         shadow-mapSize={[4096, 4096]}
         shadow-camera-left={-500}
@@ -54,6 +49,11 @@ function Lighting() {
         shadow-camera-near={1}
         shadow-camera-far={1000}
         shadow-bias={-0.0005}
+      />
+      {/* Secondary fill light for softer shadows */}
+      <directionalLight
+        position={[-100, 100, -100]}
+        intensity={0.3}
       />
     </>
   )
@@ -110,21 +110,11 @@ const DEFAULT_VISIBILITY: VisibilityState = {
 export default function Scene({
   visibility = DEFAULT_VISIBILITY,
   enableEffects = true,
-  hdrPath = '/hdri/sky.hdr',
-  envIntensity = 0.8,
 }: SceneProps) {
   const { windFieldData, paths, currentFrame, simulation } = useScene()
 
   return (
     <>
-      {/* HDR Environment for skybox and image-based lighting */}
-      <Environment
-        files={hdrPath}
-        background
-        backgroundIntensity={1}
-        environmentIntensity={envIntensity}
-      />
-
       <Lighting />
       <CameraController />
 
