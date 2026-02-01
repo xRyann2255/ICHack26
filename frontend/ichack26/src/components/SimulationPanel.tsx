@@ -7,7 +7,7 @@
 
 import { Suspense, useRef, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Grid } from '@react-three/drei'
+import { OrbitControls, Grid, Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import Terrain from './Terrain'
 import WindField from './WindField'
@@ -60,10 +60,10 @@ function LoadingBox() {
 function Lighting() {
   return (
     <>
-      <ambientLight intensity={0.4} />
       <directionalLight
         position={[100, 200, 100]}
-        intensity={1}
+        intensity={1.5}
+        color="#fffaf0"
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
@@ -95,6 +95,12 @@ function SceneContent({ routeType, showWindField, showTerrain, showWaypoints }: 
 
   return (
     <>
+      <Environment
+        files="/hdri/sky.hdr"
+        background
+        backgroundIntensity={1}
+        environmentIntensity={0.8}
+      />
       <Lighting />
 
       {/* Terrain */}
@@ -236,10 +242,7 @@ export default function SimulationPanel({
           far: 5000,
         }}
         shadows
-        style={{ background: '#1a1a2e' }}
       >
-        <color attach="background" args={['#1a1a2e']} />
-        <fog attach="fog" args={['#1a1a2e', 500, 2000]} />
 
         <SceneContent
           routeType={routeType}
