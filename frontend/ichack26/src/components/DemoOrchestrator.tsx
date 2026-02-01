@@ -36,6 +36,8 @@ export interface DemoOrchestratorProps {
   transitionDuration?: number
   /** Visibility state for wind field, etc */
   visibility?: Partial<VisibilityState>
+  /** Callback when simulation starts (drone flight begins) */
+  onSimulationStart?: () => void
 }
 
 // ============================================================================
@@ -47,6 +49,7 @@ export default function DemoOrchestrator({
   routeCreationSpeed = 0.015,
   transitionDuration = 2500,
   visibility,
+  onSimulationStart,
 }: DemoOrchestratorProps) {
   const { simulation, paths, routePlanningMode, enterPlanningMode, exitPlanningMode } = useScene()
 
@@ -176,10 +179,14 @@ export default function DemoOrchestrator({
 
     const timeout = setTimeout(() => {
       setPhase('drone_flight')
+      // Call the callback to hide UI when simulation starts
+      if (onSimulationStart) {
+        onSimulationStart()
+      }
     }, transitionDuration)
 
     return () => clearTimeout(timeout)
-  }, [phase, transitionDuration])
+  }, [phase, transitionDuration, onSimulationStart])
 
   // Detect simulation completion
   useEffect(() => {
