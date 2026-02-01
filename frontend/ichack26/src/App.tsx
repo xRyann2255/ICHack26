@@ -109,10 +109,10 @@ function AppContent() {
   const showControls = routePlanningMode === 'idle'
 
   const handleReplayCinematic = () => {
-    console.log('[App] Replay button clicked, triggering replay', { 
-      cinematicComplete, 
+    console.log('[App] Replay button clicked, triggering replay', {
+      cinematicComplete,
       replayTrigger,
-      viewMode 
+      viewMode
     })
     setReplayTrigger(prev => prev + 1)
     // Don't reset cinematicComplete - let it stay enabled

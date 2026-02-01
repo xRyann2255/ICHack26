@@ -74,23 +74,23 @@ export default function DemoOrchestrator({
     if (replayTrigger && replayTrigger > 0 && replayTrigger !== lastReplayTrigger && (phase === 'complete' || phase === 'drone_flight')) {
       console.log('[DemoOrchestrator] Replaying simulation')
       setLastReplayTrigger(replayTrigger)
-      
+
       // Get start and end points from the existing paths
       if (paths && (paths.naive || paths.optimized)) {
         const pathToUse = paths.optimized || paths.naive
         if (pathToUse && pathToUse.length >= 2) {
           const start = pathToUse[0]
           const end = pathToUse[pathToUse.length - 1]
-          
+
           console.log('[DemoOrchestrator] Restarting simulation with:', { start, end })
-          
+
           // Reset local state
           resetSimulation()
           setPlaybackPaused(false)
-          
+
           // Restart the simulation from the backend
           startSimulation(start, end, 'both')
-          
+
           // Set phase to drone_flight (it will transition automatically when data arrives)
           setPhase('drone_flight')
         }
