@@ -51,7 +51,7 @@ export interface DemoOrchestratorProps {
 
 export default function DemoOrchestrator({
   autoStart: _autoStart = true,
-  routeCreationSpeed = 0.008,
+  routeCreationSpeed = 0.004,
   transitionDuration = 2500,
   visibility,
   onSimulationStart,
