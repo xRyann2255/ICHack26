@@ -118,125 +118,23 @@ class VTULoader:
         return scene_points, scene_velocity
 
     @staticmethod
-    def normalize_to_bounds(
-        points: np.ndarray,
-        velocity: np.ndarray,
-        target_min: np.ndarray,
-        target_max: np.ndarray
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Scale and translate points to fit within target bounds.
-
-        The velocity vectors are NOT scaled - they keep their physical m/s values.
-        Only positions are transformed.
-
-        Returns:
-            Tuple of (normalized_points, velocity, scale, offset)
-        """
-        source_min = points.min(axis=0)
-        source_max = points.max(axis=0)
-        source_size = source_max - source_min
-        target_size = target_max - target_min
-
-        # Compute scale (avoid div by zero)
-        scale = np.where(source_size > 0.01, target_size / source_size, 1.0)
-
-        # Compute offset: target_min = source_min * scale + offset
-        offset = target_min - source_min * scale
-
-        # Apply transform to points only
-        normalized_points = points * scale + offset
-
-        print(f"\nNormalization transform:")
-        print(f"  Source bounds: [{source_min[0]:.1f}, {source_min[1]:.1f}, {source_min[2]:.1f}] to [{source_max[0]:.1f}, {source_max[1]:.1f}, {source_max[2]:.1f}]")
-        print(f"  Target bounds: [{target_min[0]:.1f}, {target_min[1]:.1f}, {target_min[2]:.1f}] to [{target_max[0]:.1f}, {target_max[1]:.1f}, {target_max[2]:.1f}]")
-        print(f"  Scale: [{scale[0]:.4f}, {scale[1]:.4f}, {scale[2]:.4f}]")
-        print(f"  Offset: [{offset[0]:.1f}, {offset[1]:.1f}, {offset[2]:.1f}]")
-
-        # Verify
-        result_min = normalized_points.min(axis=0)
-        result_max = normalized_points.max(axis=0)
-        print(f"  Result bounds: [{result_min[0]:.1f}, {result_min[1]:.1f}, {result_min[2]:.1f}] to [{result_max[0]:.1f}, {result_max[1]:.1f}, {result_max[2]:.1f}]")
-
-        return normalized_points, velocity, scale, offset
-
-    @staticmethod
     def create_wind_field(
         points: np.ndarray,
-        velocity: np.ndarray,
-        bounds_min: Vector3,
-        bounds_max: Vector3,
-        resolution: float = 10.0
+        velocity: np.ndarray
     ) -> WindField:
         """
-        Create a WindField by interpolating scattered VTU data onto a regular grid.
-
-        Uses KD-tree with inverse distance weighting for fast interpolation.
+        Create a WindField using the input points and velocities directly.
+        Turbulence is set to zero.
+        No interpolation is performed.
         """
-        print(f"\n=== Creating WindField grid ===")
+        print(f"\n=== Using existing wind points ===")
+        print(f"Number of points: {len(points):,}")
 
-        # Calculate grid dimensions
-        size_x = bounds_max.x - bounds_min.x
-        size_y = bounds_max.y - bounds_min.y
-        size_z = bounds_max.z - bounds_min.z
+        # Turbulence is zero
+        turbulence = np.zeros(len(points), dtype=np.float32)
 
-        nx = max(2, int(size_x / resolution) + 1)
-        ny = max(2, int(size_y / resolution) + 1)
-        nz = max(2, int(size_z / resolution) + 1)
+        return WindField(points, velocity)
 
-        print(f"Grid: {nx} x {ny} x {nz} = {nx*ny*nz:,} cells")
-        print(f"Resolution: {resolution}m")
-
-        # Create regular grid points
-        x_coords = np.linspace(bounds_min.x, bounds_max.x, nx)
-        y_coords = np.linspace(bounds_min.y, bounds_max.y, ny)
-        z_coords = np.linspace(bounds_min.z, bounds_max.z, nz)
-
-        grid_x, grid_y, grid_z = np.meshgrid(x_coords, y_coords, z_coords, indexing='ij')
-        grid_points = np.column_stack([
-            grid_x.ravel(),
-            grid_y.ravel(),
-            grid_z.ravel()
-        ])
-
-        # Build KD-tree for fast nearest neighbor lookup
-        print("Building KD-tree...")
-        tree = cKDTree(points)
-
-        # Query k nearest neighbors for interpolation
-        k = min(8, len(points))
-        print(f"Querying {k} nearest neighbors for {len(grid_points):,} grid points...")
-
-        distances, indices = tree.query(grid_points, k=k)
-
-        # Inverse distance weighting
-        # Handle zero distances (exact matches)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            weights = 1.0 / np.maximum(distances, 1e-10)
-            weights_sum = weights.sum(axis=1, keepdims=True)
-            weights = weights / weights_sum
-
-        # Interpolate velocity
-        print("Interpolating velocity field...")
-        wind_data = np.zeros((len(grid_points), 3), dtype=np.float32)
-        for i in range(k):
-            wind_data += weights[:, i:i+1] * velocity[indices[:, i]]
-
-        # Reshape to grid
-        wind_data = wind_data.reshape((nx, ny, nz, 3))
-
-        # Compute turbulence from velocity gradients
-        print("Computing turbulence...")
-        turbulence = VTULoader._compute_turbulence(wind_data, resolution)
-
-        # Stats
-        speed = np.linalg.norm(wind_data, axis=-1)
-        print(f"\nWindField stats:")
-        print(f"  Speed range: [{speed.min():.2f}, {speed.max():.2f}] m/s")
-        print(f"  Mean speed: {speed.mean():.2f} m/s")
-        print(f"  Turbulence range: [{turbulence.min():.3f}, {turbulence.max():.3f}]")
-
-        return WindField(wind_data, turbulence, bounds_min, bounds_max)
 
     @staticmethod
     def _compute_turbulence(wind_data: np.ndarray, resolution: float) -> np.ndarray:
@@ -293,22 +191,11 @@ class VTULoader:
         print(f"  Y: [{points_scene[:, 1].min():.1f}, {points_scene[:, 1].max():.1f}]")
         print(f"  Z: [{points_scene[:, 2].min():.1f}, {points_scene[:, 2].max():.1f}]")
 
-        # Step 3: Normalize positions to fit scene bounds
-        print("\n=== Normalizing to scene bounds ===")
-        target_min = np.array([scene_bounds_min.x, scene_bounds_min.y, scene_bounds_min.z])
-        target_max = np.array([scene_bounds_max.x, scene_bounds_max.y, scene_bounds_max.z])
-
-        points_normalized, velocity_normalized, scale, offset = VTULoader.normalize_to_bounds(
-            points_scene, velocity_scene, target_min, target_max
-        )
 
         # Step 4: Create WindField on regular grid
         wind_field = VTULoader.create_wind_field(
-            points_normalized,
-            velocity_normalized,
-            scene_bounds_min,
-            scene_bounds_max,
-            resolution
+            points_scene,
+            velocity_scene
         )
 
         elapsed = time.time() - start_time

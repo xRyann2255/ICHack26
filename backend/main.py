@@ -78,7 +78,7 @@ def generate_mock_data(config: DemoConfig) -> tuple:
         base_wind=config.wind.base_wind,
         altitude_factor=config.wind.altitude_factor
     )
-    print(f"   Wind field: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
+    # print(f"   Wind field: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
 
     return buildings, wind_field
 
@@ -114,7 +114,7 @@ def load_mock_data(input_dir: str) -> tuple:
     print(f"   Loaded {len(buildings)} buildings from {buildings_path}")
 
     wind_field = WindField.load_npz(wind_path)
-    print(f"   Loaded wind field {wind_field.nx}x{wind_field.ny}x{wind_field.nz} from {wind_path}")
+    # print(f"   Loaded wind field {wind_field.nx}x{wind_field.ny}x{wind_field.nz} from {wind_path}")
 
     return buildings, wind_field
 

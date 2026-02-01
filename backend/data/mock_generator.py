@@ -188,7 +188,6 @@ class MockDataGenerator:
         self,
         stl_path: str,
         wind_resolution: float = 10.0,
-        base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0),
         flight_ceiling: float = 100.0,
         margin: float = 50.0,
         vtu_path: Optional[str] = None
@@ -203,7 +202,6 @@ class MockDataGenerator:
         Args:
             stl_path: Path to STL file
             wind_resolution: Wind field grid resolution in meters
-            base_wind: Base wind velocity (vx, vy_vertical, vz) - used for mock only
             flight_ceiling: Maximum flight altitude above mesh top
             margin: Margin around mesh bounds for scene
             vtu_path: Optional path to VTU file with CFD wind data
@@ -211,7 +209,6 @@ class MockDataGenerator:
         Returns:
             Tuple of (STLMesh, WindField, (bounds_min, bounds_max))
         """
-        import time
 
         print(f"Loading STL from {stl_path}...")
         mesh = STLLoader.load_stl(
@@ -250,11 +247,8 @@ class MockDataGenerator:
             print(f"Generating mock wind field (resolution={wind_resolution}m)...")
             wind_field = self._generate_wind_field_for_mesh(
                 bounds_min, bounds_max, mesh,
-                resolution=wind_resolution,
-                base_wind=base_wind
+                resolution=wind_resolution
             )
-
-        print(f"Wind field: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
 
         return mesh, wind_field, (bounds_min, bounds_max)
 
@@ -264,9 +258,9 @@ class MockDataGenerator:
         bounds_max: Vector3,
         mesh: STLMesh,
         resolution: float = 10.0,
-        base_wind: Tuple[float, float, float] = (8.0, 0.0, 3.0),
         altitude_factor: float = 0.02
     ) -> WindField:
+        raise NotImplementedError
         """
         Generate wind field for an STL mesh scene.
 
@@ -280,7 +274,6 @@ class MockDataGenerator:
             bounds_max: Scene maximum bounds
             mesh: STL mesh for collision/proximity checks
             resolution: Grid resolution in meters
-            base_wind: Base wind velocity
             altitude_factor: Wind increase per meter of altitude
 
         Returns:
@@ -296,8 +289,7 @@ class MockDataGenerator:
         wind_data = np.zeros((nx, ny, nz, 3), dtype=np.float32)
         turbulence_data = np.zeros((nx, ny, nz), dtype=np.float32)
 
-        base_wind_vec = np.array(base_wind, dtype=np.float32)
-        base_wind_magnitude = np.linalg.norm([base_wind_vec[0], base_wind_vec[2]])
+        base_wind_vec = np.array([0.0, 0.0, 0.0], dtype=np.float32)
 
         mesh_top = mesh.max_bounds[1]  # Top of buildings
 
