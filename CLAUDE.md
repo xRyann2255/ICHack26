@@ -105,10 +105,3 @@ Connect to: `ws://localhost:8765`
 
 - **Backend**: Python (Dijkstra pathfinding, physics simulation, WebSocket server)
 - **Frontend**: React + TypeScript + Vite, Three.js via @react-three/fiber + @react-three/drei
-
-## Remaining TODO
-
-- [ ] Two-phase demo orchestration (route creation animation → drone flight)
-- [ ] Third-person camera following drones
-- [ ] Animated path drawing showing algorithm exploration
-- [ ] Play/pause/restart controls
