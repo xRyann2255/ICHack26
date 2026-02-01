@@ -211,6 +211,8 @@ class MockDataGenerator:
         Returns:
             Tuple of (STLMesh, WindField, (bounds_min, bounds_max))
         """
+        import time
+
         print(f"Loading STL from {stl_path}...")
         mesh = STLLoader.load_stl(
             stl_path,
@@ -236,6 +238,7 @@ class MockDataGenerator:
 
         # Load wind field from VTU if provided, otherwise generate mock
         if vtu_path:
+            vtu_start = time.time()
             print(f"Loading CFD wind field from {vtu_path}...")
             # The STL mesh is centered horizontally (center_xy=True), so the
             # scene center is at (0, 0) in XZ plane. We need to align the VTU
@@ -254,6 +257,7 @@ class MockDataGenerator:
                 convert_coords=True,
                 offset=offset
             )
+            print(f"VTU loading complete in {time.time() - vtu_start:.2f}s")
         else:
             # Generate mock wind field
             print(f"Generating mock wind field (resolution={wind_resolution}m)...")

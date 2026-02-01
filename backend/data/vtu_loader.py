@@ -3,14 +3,43 @@
 from __future__ import annotations
 import numpy as np
 from typing import Tuple, Optional
-from scipy.interpolate import griddata
+from scipy.interpolate import LinearNDInterpolator, NearestNDInterpolator
+from concurrent.futures import ThreadPoolExecutor
 
 from ..grid.node import Vector3
 from .wind_field import WindField
 
 
+# Cache for loaded VTU data to avoid duplicate reads
+_vtu_cache: dict = {}
+
+
 class VTULoader:
     """Load CFD wind data from VTU files and create WindField objects."""
+
+    @staticmethod
+    def _load_vtu_raw(vtu_path: str, velocity_field_name: str = 'U') -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Load raw VTU data with caching to avoid duplicate file reads.
+
+        Returns:
+            Tuple of (points, velocity) arrays
+        """
+        cache_key = (vtu_path, velocity_field_name)
+        if cache_key in _vtu_cache:
+            return _vtu_cache[cache_key]
+
+        try:
+            import pyvista as pv
+        except ImportError:
+            raise ImportError("pyvista is required to load VTU files. Install with: pip install pyvista")
+
+        mesh = pv.read(vtu_path)
+        points = mesh.points.copy()
+        velocity = mesh.point_data[velocity_field_name].copy()
+
+        _vtu_cache[cache_key] = (points, velocity)
+        return points, velocity
 
     @staticmethod
     def load_vtu(
@@ -42,17 +71,12 @@ class VTULoader:
         Returns:
             WindField with interpolated data
         """
-        try:
-            import pyvista as pv
-        except ImportError:
-            raise ImportError("pyvista is required to load VTU files. Install with: pip install pyvista")
-
         print(f"Loading VTU wind field from {vtu_path}...")
 
-        # Load the VTU mesh
-        mesh = pv.read(vtu_path)
-        points = mesh.points.copy()  # (N, 3)
-        velocity = mesh.point_data[velocity_field_name].copy()  # (N, 3)
+        # Load the VTU mesh (cached to avoid duplicate reads)
+        points, velocity = VTULoader._load_vtu_raw(vtu_path, velocity_field_name)
+        points = points.copy()
+        velocity = velocity.copy()
 
         print(f"  VTU contains {len(points)} points")
         print(f"  VTU bounds (original): X[{points[:, 0].min():.1f}, {points[:, 0].max():.1f}], "
@@ -112,48 +136,26 @@ class VTULoader:
             grid_z.ravel()
         ])
 
-        # Interpolate velocity components
-        print("  Interpolating velocity field (this may take a moment)...")
+        # Interpolate velocity field
+        # Build interpolators once (expensive Delaunay triangulation) then reuse for all components
+        print("  Building interpolators (Delaunay triangulation)...")
 
-        # Use linear interpolation, with default values for points outside convex hull
-        wind_data = np.zeros((nx * ny * nz, 3), dtype=np.float32)
-        default_wind_arr = np.array(default_wind, dtype=np.float32)
+        # Build linear interpolator for all 3 components at once
+        # This is more efficient than building 3 separate triangulations
+        linear_interp = LinearNDInterpolator(points, velocity, fill_value=np.nan)
+        nearest_interp = NearestNDInterpolator(points, velocity)
 
-        for i, component in enumerate(['vx', 'vy', 'vz']):
-            print(f"    Interpolating {component}...")
-            interpolated = griddata(
-                points,
-                velocity[:, i],
-                grid_points,
-                method='linear',
-                fill_value=np.nan
-            )
+        print("  Interpolating velocity field...")
+        wind_data = linear_interp(grid_points).astype(np.float32)
 
-            # Count NaN values (outside CFD domain)
-            nan_count = np.sum(np.isnan(interpolated))
+        # Fill NaN values with nearest neighbor interpolation
+        nan_mask = np.isnan(wind_data[:, 0])  # Check first component (all have same NaN pattern)
+        nan_count = int(np.sum(nan_mask))
 
-            # Fill NaN values with nearest neighbor interpolation
-            # This gives reasonable values near the domain boundary
-            nan_mask = np.isnan(interpolated)
-            if nan_mask.any():
-                try:
-                    nearest = griddata(
-                        points,
-                        velocity[:, i],
-                        grid_points[nan_mask],
-                        method='nearest'
-                    )
-                    interpolated[nan_mask] = nearest
-                except Exception as e:
-                    # If nearest fails, use default
-                    print(f"      Warning: nearest interpolation failed, using default: {e}")
-                    interpolated[nan_mask] = default_wind_arr[i]
-
-            wind_data[:, i] = interpolated
-
-            if nan_count > 0:
-                pct = 100 * nan_count / len(interpolated)
-                print(f"      {nan_count} points ({pct:.1f}%) outside CFD domain, filled with nearest")
+        if nan_count > 0:
+            pct = 100 * nan_count / len(grid_points)
+            print(f"    {nan_count} points ({pct:.1f}%) outside CFD domain, filling with nearest...")
+            wind_data[nan_mask] = nearest_interp(grid_points[nan_mask]).astype(np.float32)
 
         # Reshape to grid dimensions
         wind_data = wind_data.reshape((nx, ny, nz, 3))
@@ -218,13 +220,8 @@ class VTULoader:
         Returns:
             Tuple of (min_bounds, max_bounds) as numpy arrays
         """
-        try:
-            import pyvista as pv
-        except ImportError:
-            raise ImportError("pyvista is required to load VTU files. Install with: pip install pyvista")
-
-        mesh = pv.read(vtu_path)
-        points = mesh.points
+        # Use cached loader to avoid duplicate file reads
+        points, _ = VTULoader._load_vtu_raw(vtu_path)
 
         if convert_coords:
             # Convert from Z-up to Y-up (with negation matching STL transform)
