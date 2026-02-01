@@ -61,28 +61,41 @@ function effortToColor(effort: number): THREE.Color {
 }
 
 // ============================================================================
-// Propeller Component
+// Propellers Component (consolidated - single useFrame for all propellers)
 // ============================================================================
 
-interface PropellerProps {
-  position: [number, number, number]
+interface PropellersProps {
+  positions: [number, number, number][]
   speed: number
 }
 
-function Propeller({ position, speed }: PropellerProps) {
-  const ref = useRef<THREE.Mesh>(null)
+function Propellers({ positions, speed }: PropellersProps) {
+  const refs = useRef<(THREE.Mesh | null)[]>([])
 
+  // Single useFrame for all propellers instead of one per propeller
   useFrame((_, delta) => {
-    if (ref.current) {
-      ref.current.rotation.y += speed * delta
-    }
+    refs.current.forEach((mesh, i) => {
+      if (mesh) {
+        // Alternate direction for each propeller
+        const direction = i % 2 === 0 ? 1 : -1
+        mesh.rotation.y += speed * direction * delta
+      }
+    })
   })
 
   return (
-    <mesh ref={ref} position={position}>
-      <cylinderGeometry args={[0.8, 0.8, 0.05, 16]} />
-      <meshStandardMaterial color="#333" transparent opacity={0.7} />
-    </mesh>
+    <>
+      {positions.map((position, i) => (
+        <mesh
+          key={i}
+          ref={(el) => { refs.current[i] = el }}
+          position={position}
+        >
+          <cylinderGeometry args={[0.8, 0.8, 0.05, 16]} />
+          <meshStandardMaterial color="#333" transparent opacity={0.7} />
+        </mesh>
+      ))}
+    </>
   )
 }
 
@@ -97,15 +110,15 @@ interface DroneBodyProps {
   castShadow?: boolean
 }
 
-function DroneBody({ color, scale, propellerSpeed, castShadow = true }: DroneBodyProps) {
-  // Propeller positions (quadcopter layout)
-  const propellerPositions: [number, number, number][] = [
-    [1.2, 0.3, 1.2],
-    [1.2, 0.3, -1.2],
-    [-1.2, 0.3, 1.2],
-    [-1.2, 0.3, -1.2],
-  ]
+// Propeller positions defined once (quadcopter layout)
+const PROPELLER_LAYOUT: [number, number, number][] = [
+  [1.2, 0.3, 1.2],
+  [1.2, 0.3, -1.2],
+  [-1.2, 0.3, 1.2],
+  [-1.2, 0.3, -1.2],
+]
 
+function DroneBody({ color, scale, propellerSpeed, castShadow = true }: DroneBodyProps) {
   return (
     <group scale={scale}>
       {/* Main body */}
@@ -130,14 +143,8 @@ function DroneBody({ color, scale, propellerSpeed, castShadow = true }: DroneBod
         <meshStandardMaterial color="#ff4444" />
       </mesh>
 
-      {/* Propellers */}
-      {propellerPositions.map((pos, i) => (
-        <Propeller
-          key={i}
-          position={pos}
-          speed={propellerSpeed * (i % 2 === 0 ? 1 : -1)} // Alternate directions
-        />
-      ))}
+      {/* Propellers - consolidated into single component with one useFrame */}
+      <Propellers positions={PROPELLER_LAYOUT} speed={propellerSpeed} />
 
       {/* Landing skids */}
       <mesh position={[0.5, -0.3, 0]} castShadow={castShadow}>
@@ -252,10 +259,16 @@ interface RotorWashProps {
   active: boolean
 }
 
+// Reusable objects for RotorWash to avoid per-frame allocations
+const _rotorVelocityScale = new THREE.Vector3()
+const _rotorScaleVec = new THREE.Vector3()
+const _zeroScaleMatrix = new THREE.Matrix4().makeScale(0, 0, 0)
+
 function RotorWash({ propellerPositions, color, scale, active }: RotorWashProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const particlesRef = useRef<RotorWashParticle[]>([])
   const lastEmitRef = useRef(0)
+  const prevParticleCountRef = useRef(0)
 
   const maxParticles = 80
 
@@ -267,6 +280,7 @@ function RotorWash({ propellerPositions, color, scale, active }: RotorWashProps)
 
     const now = state.clock.elapsedTime
     const particles = particlesRef.current
+    const mesh = meshRef.current
 
     // Emit new particles from each rotor
     if (active && now - lastEmitRef.current > 0.03) {
@@ -295,16 +309,8 @@ function RotorWash({ propellerPositions, color, scale, active }: RotorWashProps)
       lastEmitRef.current = now
     }
 
-    // Update particles
-    const mesh = meshRef.current
-
-    // Hide all first
-    for (let i = 0; i < maxParticles; i++) {
-      dummyMatrix.makeScale(0, 0, 0)
-      mesh.setMatrixAt(i, dummyMatrix)
-    }
-
     // Update and render active particles
+    let activeCount = 0
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i]
       p.age += delta
@@ -314,8 +320,9 @@ function RotorWash({ propellerPositions, color, scale, active }: RotorWashProps)
         continue
       }
 
-      // Update position with velocity and slight spread
-      p.position.add(p.velocity.clone().multiplyScalar(delta))
+      // Update position with velocity - reuse vector for scaling
+      _rotorVelocityScale.copy(p.velocity).multiplyScalar(delta)
+      p.position.add(_rotorVelocityScale)
       p.velocity.x *= 0.98 // Air resistance
       p.velocity.z *= 0.98
       p.velocity.y *= 0.95 // Slow down falling
@@ -326,13 +333,22 @@ function RotorWash({ propellerPositions, color, scale, active }: RotorWashProps)
       const opacity = 1 - ageRatio
 
       dummyMatrix.makeTranslation(p.position.x, p.position.y, p.position.z)
-      dummyMatrix.scale(new THREE.Vector3(currentSize, currentSize, currentSize))
-      mesh.setMatrixAt(i, dummyMatrix)
+      _rotorScaleVec.set(currentSize, currentSize, currentSize)
+      dummyMatrix.scale(_rotorScaleVec)
+      mesh.setMatrixAt(activeCount, dummyMatrix)
 
       // Fade color with age
       dummyColor.copy(color).multiplyScalar(0.3 + opacity * 0.7)
-      mesh.setColorAt(i, dummyColor)
+      mesh.setColorAt(activeCount, dummyColor)
+      activeCount++
     }
+
+    // Only hide instances that were previously active but are now dead
+    // This is much more efficient than hiding ALL instances every frame
+    for (let i = activeCount; i < prevParticleCountRef.current; i++) {
+      mesh.setMatrixAt(i, _zeroScaleMatrix)
+    }
+    prevParticleCountRef.current = activeCount
 
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
@@ -453,13 +469,11 @@ function FadingMotionTrail({
 // Main Drone Component
 // ============================================================================
 
-// Propeller positions for rotor wash (matches DroneBody)
-const PROPELLER_POSITIONS: [number, number, number][] = [
-  [1.2, 0.3, 1.2],
-  [1.2, 0.3, -1.2],
-  [-1.2, 0.3, 1.2],
-  [-1.2, 0.3, -1.2],
-]
+// Reuse PROPELLER_LAYOUT for rotor wash (already defined above)
+
+// Reusable objects for per-frame calculations to avoid GC pressure
+const _headingVec = new THREE.Vector3()
+const _yAxis = new THREE.Vector3(0, 1, 0)
 
 export default function Drone({
   frame,
@@ -497,21 +511,23 @@ export default function Drone({
     if (!frame || !groupRef.current) return
 
     // Update target position
-    targetPositionRef.current.set(...frame.position)
+    targetPositionRef.current.set(frame.position[0], frame.position[1], frame.position[2])
 
     // Calculate target rotation from heading - Y-axis rotation only (yaw)
     // Project heading onto XZ plane to keep drone upright
-    const heading = new THREE.Vector3(frame.heading[0], 0, frame.heading[2])
-    const headingLength = heading.length()
+    // Reuse _headingVec to avoid per-frame allocation
+    _headingVec.set(frame.heading[0], 0, frame.heading[2])
+    const headingLength = _headingVec.length()
 
     // Safety check: ensure heading is valid before normalizing
     if (headingLength > 0.01) {
-      heading.normalize()
+      _headingVec.normalize()
 
       // Calculate yaw angle from the XZ heading
       // atan2 gives us the angle from +Z axis to the heading direction
-      const yawAngle = Math.atan2(heading.x, heading.z)
-      targetQuaternionRef.current.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawAngle)
+      const yawAngle = Math.atan2(_headingVec.x, _headingVec.z)
+      // Reuse _yAxis to avoid allocation
+      targetQuaternionRef.current.setFromAxisAngle(_yAxis, yawAngle)
     }
     // If heading is invalid, keep the previous rotation (don't update targetQuaternionRef)
 
@@ -546,7 +562,7 @@ export default function Drone({
         {/* Rotor wash particle effect */}
         {showRotorWash && (
           <RotorWash
-            propellerPositions={PROPELLER_POSITIONS}
+            propellerPositions={PROPELLER_LAYOUT}
             color={droneColor}
             scale={scale}
             active={true}

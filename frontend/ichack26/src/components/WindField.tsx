@@ -70,9 +70,35 @@ function velocityToColor(normalizedVelocity: number): THREE.Color {
   return color
 }
 
+/**
+ * Same as velocityToColor but writes to existing Color object to avoid allocations
+ */
+function velocityToColorInPlace(normalizedVelocity: number, outColor: THREE.Color): void {
+  const t = Math.max(0, Math.min(1, normalizedVelocity))
+  const hue = 0.66 * (1 - t)
+  outColor.setHSL(hue, 0.9, 0.55)
+}
+
 // ============================================================================
-// Wind Field Sampling (Trilinear Interpolation)
+// Wind Field Sampling (Trilinear Interpolation) - Optimized with object pooling
 // ============================================================================
+
+// Reusable Vector3 pool to avoid GC pressure during intensive sampling
+const _v000 = new THREE.Vector3()
+const _v100 = new THREE.Vector3()
+const _v010 = new THREE.Vector3()
+const _v110 = new THREE.Vector3()
+const _v001 = new THREE.Vector3()
+const _v101 = new THREE.Vector3()
+const _v011 = new THREE.Vector3()
+const _v111 = new THREE.Vector3()
+const _c00 = new THREE.Vector3()
+const _c10 = new THREE.Vector3()
+const _c01 = new THREE.Vector3()
+const _c11 = new THREE.Vector3()
+const _c0 = new THREE.Vector3()
+const _c1 = new THREE.Vector3()
+const _result = new THREE.Vector3()
 
 function sampleWindField(
   position: THREE.Vector3,
@@ -101,32 +127,36 @@ function sampleWindField(
 
   const getIndex = (ix: number, iy: number, iz: number) => ix + iy * nx + iz * nx * ny
 
-  const getVec = (idx: number): THREE.Vector3 => {
+  // Inline vector fetching to reusable objects
+  const setVec = (out: THREE.Vector3, idx: number): void => {
     if (idx >= 0 && idx < windVectors.length) {
       const v = windVectors[idx]
-      return new THREE.Vector3(v[0], v[1], v[2])
+      out.set(v[0], v[1], v[2])
+    } else {
+      out.set(0, 0, 0)
     }
-    return new THREE.Vector3(0, 0, 0)
   }
 
-  const v000 = getVec(getIndex(x0, y0, z0))
-  const v100 = getVec(getIndex(x1, y0, z0))
-  const v010 = getVec(getIndex(x0, y1, z0))
-  const v110 = getVec(getIndex(x1, y1, z0))
-  const v001 = getVec(getIndex(x0, y0, z1))
-  const v101 = getVec(getIndex(x1, y0, z1))
-  const v011 = getVec(getIndex(x0, y1, z1))
-  const v111 = getVec(getIndex(x1, y1, z1))
+  setVec(_v000, getIndex(x0, y0, z0))
+  setVec(_v100, getIndex(x1, y0, z0))
+  setVec(_v010, getIndex(x0, y1, z0))
+  setVec(_v110, getIndex(x1, y1, z0))
+  setVec(_v001, getIndex(x0, y0, z1))
+  setVec(_v101, getIndex(x1, y0, z1))
+  setVec(_v011, getIndex(x0, y1, z1))
+  setVec(_v111, getIndex(x1, y1, z1))
 
-  const c00 = v000.clone().lerp(v100, tx)
-  const c10 = v010.clone().lerp(v110, tx)
-  const c01 = v001.clone().lerp(v101, tx)
-  const c11 = v011.clone().lerp(v111, tx)
+  // Trilinear interpolation using reusable vectors
+  _c00.copy(_v000).lerp(_v100, tx)
+  _c10.copy(_v010).lerp(_v110, tx)
+  _c01.copy(_v001).lerp(_v101, tx)
+  _c11.copy(_v011).lerp(_v111, tx)
 
-  const c0 = c00.clone().lerp(c10, ty)
-  const c1 = c01.clone().lerp(c11, ty)
+  _c0.copy(_c00).lerp(_c10, ty)
+  _c1.copy(_c01).lerp(_c11, ty)
 
-  return c0.clone().lerp(c1, tz)
+  // Return a clone since caller may store the result
+  return _result.copy(_c0).lerp(_c1, tz).clone()
 }
 
 function isInBounds(position: THREE.Vector3, bounds: Bounds, margin: number = 0): boolean {
@@ -242,16 +272,30 @@ interface StreamlineLinesProps {
 /**
  * Render streamlines as smooth CatmullRom spline curves.
  * This creates flowing, curved lines that smoothly follow wind direction changes.
+ * Uses a single shared material for all lines to reduce GPU state changes.
  */
 function StreamlineLines({ streamlines, opacity, curveSegments = 5 }: StreamlineLinesProps) {
-  const lines = useMemo(() => {
-    return streamlines.map(({ points, velocities }) => {
-      const geo = new THREE.BufferGeometry()
+  // Create ONE shared material for all streamlines
+  const sharedMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: opacity,
+      linewidth: 1,
+    })
+  }, [opacity])
 
+  const lines = useMemo(() => {
+    // Reusable color object to avoid allocations
+    const tempColor = new THREE.Color()
+
+    return streamlines.map(({ points, velocities }) => {
       // Need at least 2 points for a curve
       if (points.length < 2) {
         return null
       }
+
+      const geo = new THREE.BufferGeometry()
 
       // Create a smooth CatmullRom spline through the advected points
       const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5)
@@ -260,12 +304,15 @@ function StreamlineLines({ streamlines, opacity, curveSegments = 5 }: Streamline
       const numSamples = Math.max(points.length * curveSegments, 10)
       const sampledPoints = curve.getPoints(numSamples)
 
-      const positions: number[] = []
-      const colors: number[] = []
+      const positions = new Float32Array(sampledPoints.length * 3)
+      const colors = new Float32Array(sampledPoints.length * 3)
 
       for (let i = 0; i < sampledPoints.length; i++) {
         const p = sampledPoints[i]
-        positions.push(p.x, p.y, p.z)
+        const i3 = i * 3
+        positions[i3] = p.x
+        positions[i3 + 1] = p.y
+        positions[i3 + 2] = p.z
 
         // Interpolate velocity for color based on position along curve
         const t = i / (sampledPoints.length - 1)
@@ -275,21 +322,18 @@ function StreamlineLines({ streamlines, opacity, curveSegments = 5 }: Streamline
         const frac = velocityIndex - lowIdx
         const interpolatedVelocity = velocities[lowIdx] * (1 - frac) + velocities[highIdx] * frac
 
-        const color = velocityToColor(interpolatedVelocity)
-        colors.push(color.r, color.g, color.b)
+        // Reuse tempColor to avoid allocations
+        velocityToColorInPlace(interpolatedVelocity, tempColor)
+        colors[i3] = tempColor.r
+        colors[i3 + 1] = tempColor.g
+        colors[i3 + 2] = tempColor.b
       }
 
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
       geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
 
-      const material = new THREE.LineBasicMaterial({
-        vertexColors: true,
-        transparent: true,
-        opacity: opacity,
-        linewidth: 1,
-      })
-
-      return new THREE.Line(geo, material)
+      // Use shared material instead of creating new one
+      return new THREE.Line(geo, sharedMaterial)
     }).filter((line) => line !== null) as THREE.Line[]
   }, [streamlines, curveSegments, opacity])
 

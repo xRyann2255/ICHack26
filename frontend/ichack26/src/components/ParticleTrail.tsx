@@ -52,6 +52,11 @@ interface Particle {
   opacity: number
 }
 
+// Reusable objects for particle updates
+const _particleVelocityScale = new THREE.Vector3()
+const _particleScaleVec = new THREE.Vector3()
+const _zeroScaleMatrix = new THREE.Matrix4().makeScale(0, 0, 0)
+
 export default function ParticleTrail({
   position,
   color = '#4ecdc4',
@@ -68,6 +73,7 @@ export default function ParticleTrail({
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const particlesRef = useRef<Particle[]>([])
   const lastEmitTimeRef = useRef(0)
+  const prevParticleCountRef = useRef(0)
   const dummyMatrix = useMemo(() => new THREE.Matrix4(), [])
   const dummyColor = useMemo(() => new THREE.Color(), [])
 
@@ -86,6 +92,7 @@ export default function ParticleTrail({
 
     const now = state.clock.elapsedTime
     const particles = particlesRef.current
+    const mesh = meshRef.current
 
     // Emit new particles based on emission rate
     const emitInterval = 1 / (emissionRate * intensity)
@@ -107,7 +114,8 @@ export default function ParticleTrail({
       lastEmitTimeRef.current = now
     }
 
-    // Update existing particles
+    // Update existing particles and render in one pass
+    let activeCount = 0
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i]
       p.age += delta
@@ -118,8 +126,9 @@ export default function ParticleTrail({
         continue
       }
 
-      // Update position
-      p.position.add(p.velocity.clone().multiplyScalar(delta))
+      // Update position - reuse vector to avoid allocation
+      _particleVelocityScale.copy(p.velocity).multiplyScalar(delta)
+      p.position.add(_particleVelocityScale)
 
       // Add slight upward drift
       p.position.y += delta * 0.2
@@ -128,28 +137,25 @@ export default function ParticleTrail({
       const ageRatio = p.age / p.maxAge
       p.size = particleSize * intensity * (1 - ageRatio * sizeDecay)
       p.opacity = 1 - ageRatio * opacityDecay
-    }
 
-    // Update instanced mesh
-    const mesh = meshRef.current
-
-    // Hide all instances first
-    for (let i = 0; i < maxParticles; i++) {
-      dummyMatrix.makeScale(0, 0, 0)
-      mesh.setMatrixAt(i, dummyMatrix)
-    }
-
-    // Position visible particles
-    particles.forEach((p, i) => {
+      // Render this particle
       dummyMatrix.makeTranslation(p.position.x, p.position.y, p.position.z)
-      dummyMatrix.scale(new THREE.Vector3(p.size, p.size, p.size))
-      mesh.setMatrixAt(i, dummyMatrix)
+      _particleScaleVec.set(p.size, p.size, p.size)
+      dummyMatrix.scale(_particleScaleVec)
+      mesh.setMatrixAt(activeCount, dummyMatrix)
 
       // Color with opacity variation
       dummyColor.copy(baseColor)
       dummyColor.multiplyScalar(0.5 + p.opacity * 0.5)
-      mesh.setColorAt(i, dummyColor)
-    })
+      mesh.setColorAt(activeCount, dummyColor)
+      activeCount++
+    }
+
+    // Only hide instances that were previously active but are now dead
+    for (let i = activeCount; i < prevParticleCountRef.current; i++) {
+      mesh.setMatrixAt(i, _zeroScaleMatrix)
+    }
+    prevParticleCountRef.current = activeCount
 
     mesh.instanceMatrix.needsUpdate = true
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
