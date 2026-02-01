@@ -157,25 +157,21 @@ export default function DroneFlightView({
         <div style={{ ...styles.label, backgroundColor: 'rgba(255, 107, 107, 0.9)' }}>
           Naive Route
         </div>
-        <Canvas shadows style={{ background: '#1a1a2e' }}>
+        <Canvas camera={{
+          position: [300, 200, 300],
+          fov: 60,
+          near: 0.1,
+          far: 5000,
+        }} shadows style={{ background: '#1a1a2e' }}>
           <color attach="background" args={['#1a1a2e']} />
           <fog attach="fog" args={['#1a1a2e', 200, 800]} />
-          <Canvas
-            camera={{
-              position: [300, 200, 300],
-              fov: 60,
-              near: 0.1,
-              far: 5000,
-            }}
-            shadows
-          >
-            <FlightScene routeType="naive" showWindField={showWindField} />
-          </Canvas>
-          <MetricsOverlay
-            frame={currentFrame.naive}
-            routeType="naive"
-            totalWaypoints={paths?.naive?.length || 0}
-          />
+          <FlightScene routeType="naive" showWindField={showWindField} />
+        </Canvas>
+        <MetricsOverlay
+          frame={currentFrame.naive}
+          routeType="naive"
+          totalWaypoints={paths?.naive?.length || 0}
+        />
       </div>
 
       {/* Divider */}
@@ -186,25 +182,21 @@ export default function DroneFlightView({
         <div style={{ ...styles.label, backgroundColor: 'rgba(78, 205, 196, 0.9)' }}>
           Wind-Optimized Route
         </div>
-        <Canvas shadows style={{ background: '#1a1a2e' }}>
+        <Canvas camera={{
+          position: [300, 200, 300],
+          fov: 60,
+          near: 0.1,
+          far: 5000,
+        }} shadows style={{ background: '#1a1a2e' }}>
           <color attach="background" args={['#1a1a2e']} />
           <fog attach="fog" args={['#1a1a2e', 200, 800]} />
-          <Canvas
-            camera={{
-              position: [300, 200, 300],
-              fov: 60,
-              near: 0.1,
-              far: 5000,
-            }}
-            shadows
-          >
-            <FlightScene routeType="optimized" showWindField={showWindField} />
-          </Canvas>
-          <MetricsOverlay
-            frame={currentFrame.optimized}
-            routeType="optimized"
-            totalWaypoints={paths?.optimized?.length || 0}
-          />
+          <FlightScene routeType="optimized" showWindField={showWindField} />
+        </Canvas>
+        <MetricsOverlay
+          frame={currentFrame.optimized}
+          routeType="optimized"
+          totalWaypoints={paths?.optimized?.length || 0}
+        />
       </div>
     </div>
   )
