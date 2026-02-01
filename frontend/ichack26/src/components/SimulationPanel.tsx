@@ -118,7 +118,6 @@ function SceneContent({ routeType, showWindField, showTerrain, showWaypoints }: 
           streamlineCount={550}
           integrationSteps={22}
           stepSize={7.0}
-          opacity={0.8}
           arrowSize={4.0}
         />
       )}
@@ -202,8 +201,8 @@ function SyncedControls({ isControlPanel, onCameraChange, targetCamera }: Synced
       onChange={(e) => {
         if (isControlPanel && onCameraChange && e?.target) {
           const camera = e.target.object as THREE.Camera
-          // Store target for syncing
-          ;(camera as any).userData = { target: e.target.target.clone() }
+            // Store target for syncing
+            ; (camera as any).userData = { target: e.target.target.clone() }
           onCameraChange(camera)
         }
       }}

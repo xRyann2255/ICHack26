@@ -49,8 +49,8 @@ except ImportError:
 from ..grid.node import Vector3
 from ..grid.grid_3d import Grid3D
 from ..data.wind_field import WindField
-from ..data.mock_generator import MockDataGenerator
 from ..data.stl_loader import STLLoader, STLMesh, MeshCollisionChecker
+from ..data.vtu_loader import VTULoader
 from ..routing.cost_calculator import CostCalculator, WeightConfig
 from ..routing.dijkstra import DijkstraRouter
 from ..routing.naive_router import NaiveRouter
@@ -79,7 +79,6 @@ class ServerConfig:
     bounds_max: tuple = (200, 80, 200)  # (x, y_height, z_depth)
     grid_resolution: float = 20.0  # Larger = faster startup, smaller = finer paths
     wind_resolution: float = 10.0
-    base_wind: tuple = (8.0, 0.0, 2.0)  # (vx, vy_vertical, vz)
     random_seed: int = 42
 
     # STL file path - defaults to southken.stl in project root
@@ -108,6 +107,7 @@ class WebSocketServer:
 
         self.config = config or ServerConfig()
         self.wind_field: Optional[WindField] = None
+        self.mini_wind_field: Optional[WindField] = None
         self.grid: Optional[Grid3D] = None
         self.wind_router: Optional[DijkstraRouter] = None
         self.naive_router: Optional[NaiveRouter] = None
@@ -127,56 +127,66 @@ class WebSocketServer:
 
         logger.info("Initializing server...")
 
-        gen = MockDataGenerator()
-
         # Resolve STL path - check multiple locations
         stl_path = self.config.stl_path
         if not os.path.isabs(stl_path):
-            # Try relative to current directory first
             if not os.path.exists(stl_path):
-                # Try relative to this file's directory (backend/server/)
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.dirname(os.path.dirname(script_dir))
                 stl_path = os.path.join(project_root, self.config.stl_path)
 
         if not os.path.exists(stl_path):
-            raise FileNotFoundError(f"STL file not found: {stl_path}. The southken.stl file is required.")
+            raise FileNotFoundError(f"STL file not found: {stl_path}")
 
-        # Resolve VTU path if provided
+        # Resolve VTU path
         vtu_path = self.config.vtu_path
         if vtu_path and not os.path.isabs(vtu_path):
-            # Try relative to current directory first
             if not os.path.exists(vtu_path):
-                # Try relative to project root
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 project_root = os.path.dirname(os.path.dirname(script_dir))
                 vtu_path = os.path.join(project_root, self.config.vtu_path)
             if not os.path.exists(vtu_path):
-                logger.warning(f"VTU file not found: {vtu_path}, using mock wind data")
-                vtu_path = None
+                raise FileNotFoundError(f"VTU file not found: {vtu_path}")
 
-        # Load scene from STL file
-        logger.info(f"Loading scene from STL: {stl_path}")
-        if vtu_path:
-            logger.info(f"Using CFD wind data from VTU: {vtu_path}")
-        else:
-            logger.info("Using mock wind data (no VTU file specified)")
+        # Load STL mesh
+        logger.info(f"Loading STL: {stl_path}")
+        self.mesh = STLLoader.load_stl(stl_path, convert_coords=True, center_xy=True, ground_at_zero=True)
 
-        self.mesh, self.wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
-            stl_path,
-            wind_resolution=self.config.wind_resolution,
-            base_wind=self.config.base_wind,
-            flight_ceiling=50.0,
-            margin=50.0,
-            vtu_path=vtu_path
+        # Calculate scene bounds from mesh
+        margin = 50.0
+        flight_ceiling = 50.0
+        bounds_min = Vector3(
+            self.mesh.min_bounds[0] - margin,
+            0,
+            self.mesh.min_bounds[2] - margin
         )
+        bounds_max = Vector3(
+            self.mesh.max_bounds[0] + margin,
+            self.mesh.max_bounds[1] + flight_ceiling,
+            self.mesh.max_bounds[2] + margin
+        )
+
+        # Load wind field from VTU
+        logger.info(f"Loading VTU wind data: {vtu_path}")
+        self.wind_field = VTULoader.load_and_normalize(
+            vtu_path,
+            scene_bounds_min=bounds_min,
+            scene_bounds_max=bounds_max,
+            resolution=self.config.wind_resolution
+        )
+        # Take every 10 points from the main wind field (N, 3)
+        N = 10
+        mini_points = self.wind_field.points[::N]
+        mini_velocities = self.wind_field.velocities[::N]
+        self.mini_wind_field = WindField(mini_points, mini_velocities)
+            
         self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
         # Update config bounds to match mesh
         self.config.bounds_min = (bounds_min.x, bounds_min.y, bounds_min.z)
         self.config.bounds_max = (bounds_max.x, bounds_max.y, bounds_max.z)
         logger.info(f"STL scene loaded, bounds: {bounds_min} to {bounds_max}")
 
-        logger.info(f"Wind field: {self.wind_field.nx}x{self.wind_field.ny}x{self.wind_field.nz}")
+        # logger.info(f"Wind field: {self.wind_field.nx}x{self.wind_field.ny}x{self.wind_field.nz}")
 
         # Create grid
         logger.info("Creating grid...")
@@ -249,10 +259,9 @@ class WebSocketServer:
                 "max": list(self.config.bounds_max),
             },
             "grid_resolution": self.config.grid_resolution,
-            "wind_base_direction": list(self.config.base_wind),
             # Buildings array is empty - frontend loads STL mesh directly
             "buildings": [],
-            "wind_field_shape": [self.wind_field.nx, self.wind_field.ny, self.wind_field.nz],
+            # "wind_field_shape": [self.wind_field.nx, self.wind_field.ny, self.wind_field.nz],
             # Always using STL mesh for collision detection
             "use_stl_mesh": True,
             "mesh_bounds": {
@@ -272,29 +281,15 @@ class WebSocketServer:
 
         Returns wind vectors and turbulence for every cell in the grid.
         """
-        wf = self.wind_field
-
-        # Use full resolution - no downsampling
-        wind_data = wf.wind_data
-        turb_data = wf.turbulence_data
-        shape = [wf.nx, wf.ny, wf.nz]
-        resolution = self.config.wind_resolution
-
-        # Round to reduce precision and JSON size
-        wind_flat = np.round(wind_data.reshape(-1, 3), precision).tolist()
-        turb_flat = np.round(turb_data.flatten(), precision + 1).tolist()
+        wf = self.mini_wind_field
 
         return {
             "bounds": {
                 "min": list(self.config.bounds_min),
                 "max": list(self.config.bounds_max),
             },
-            "resolution": resolution,
-            "shape": shape,
-            # Flatten wind data to list of [vx, vy, vz] for each cell
-            # Order: x varies fastest, then y, then z (C-order)
-            "wind_vectors": wind_flat,
-            "turbulence": turb_flat,
+            "points": wf.points.tolist(),
+            "velocity": wf.velocities.tolist(),
         }
 
     async def handle_client(self, websocket: WebSocketServerProtocol) -> None:

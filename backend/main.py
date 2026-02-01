@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
-"""
-Wind-Aware Drone Routing - Main Entry Point
 
-CLI tool for generating mock data and computing optimized drone routes.
-
-Usage:
-    python -m backend.main --generate-mock --preset small
-    python -m backend.main --run --preset demo --output data/output/demo.json
-    python -m backend.main --generate-mock --run --preset small
-"""
 
 import argparse
 import os
-import sys
 import time
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from .grid.node import Vector3
 from .grid.grid_3d import Grid3D
-from .data.mock_generator import MockDataGenerator
 from .data.wind_field import WindField
 from .data.building_geometry import BuildingCollection
 from .data.stl_loader import STLLoader, STLMesh
+from .data.vtu_loader import VTULoader
 from .routing.cost_calculator import CostCalculator, WeightConfig
 from .routing.dijkstra import DijkstraRouter
 from .routing.naive_router import NaiveRouter
@@ -44,114 +34,46 @@ def print_step(text: str) -> None:
     print(f"\n>> {text}")
 
 
-def generate_mock_data(config: DemoConfig) -> tuple:
-    """
-    Generate mock wind and building data.
-
-    Returns:
-        Tuple of (buildings, wind_field)
-    """
-    print_step("Generating mock data...")
-
-    gen = MockDataGenerator(seed=config.random_seed)
-
-    bounds_min = Vector3(*config.scene.bounds_min)
-    bounds_max = Vector3(*config.scene.bounds_max)
-
-    # Generate buildings
-    print(f"   Creating {config.buildings.num_buildings} buildings...")
-    buildings = gen.generate_buildings(
-        bounds_min, bounds_max,
-        num_buildings=config.buildings.num_buildings,
-        min_size=config.buildings.min_size,
-        max_size=config.buildings.max_size,
-        margin=config.buildings.margin
-    )
-    print(f"   Created {len(buildings)} buildings")
-
-    # Generate wind field
-    print(f"   Generating wind field (resolution={config.wind.field_resolution}m)...")
-    wind_field = gen.generate_wind_field(
-        bounds_min, bounds_max,
-        buildings,
-        resolution=config.wind.field_resolution,
-        base_wind=config.wind.base_wind,
-        altitude_factor=config.wind.altitude_factor
-    )
-    print(f"   Wind field: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
-
-    return buildings, wind_field
-
-
-def save_mock_data(
-    buildings: BuildingCollection,
-    wind_field: WindField,
-    output_dir: str
-) -> None:
-    """Save mock data to files."""
-    print_step("Saving mock data...")
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    buildings_path = os.path.join(output_dir, "buildings.json")
-    wind_path = os.path.join(output_dir, "wind_field.npz")
-
-    buildings.save_json(buildings_path)
-    print(f"   Saved: {buildings_path}")
-
-    wind_field.save_npz(wind_path)
-    print(f"   Saved: {wind_path}")
-
-
-def load_mock_data(input_dir: str) -> tuple:
-    """Load mock data from files."""
-    print_step("Loading mock data...")
-
-    buildings_path = os.path.join(input_dir, "buildings.json")
-    wind_path = os.path.join(input_dir, "wind_field.npz")
-
-    buildings = BuildingCollection.load_json(buildings_path)
-    print(f"   Loaded {len(buildings)} buildings from {buildings_path}")
-
-    wind_field = WindField.load_npz(wind_path)
-    print(f"   Loaded wind field {wind_field.nx}x{wind_field.ny}x{wind_field.nz} from {wind_path}")
-
-    return buildings, wind_field
-
-
 def load_stl_scene(
     stl_path: str,
+    vtu_path: str,
     config: DemoConfig,
-    save_dir: Optional[str] = None
 ) -> tuple:
     """
-    Load scene from STL file.
+    Load scene from STL and VTU files.
 
     Args:
         stl_path: Path to STL file
+        vtu_path: Path to VTU file with CFD wind data
         config: Demo configuration
-        save_dir: Optional directory to save generated wind field
 
     Returns:
         Tuple of (mesh, wind_field, bounds_min, bounds_max)
     """
-    print_step(f"Loading STL scene from {stl_path}...")
+    print_step(f"Loading STL: {stl_path}")
+    mesh = STLLoader.load_stl(stl_path, convert_coords=True, center_xy=True, ground_at_zero=True)
 
-    gen = MockDataGenerator(seed=config.random_seed)
-    mesh, wind_field, (bounds_min, bounds_max) = gen.load_stl_scene(
-        stl_path,
-        wind_resolution=config.wind.field_resolution,
-        base_wind=config.wind.base_wind,
-        flight_ceiling=50.0,  # 50m above buildings
-        margin=50.0  # 50m around buildings
+    # Calculate scene bounds
+    margin = 50.0
+    flight_ceiling = 50.0
+    bounds_min = Vector3(
+        mesh.min_bounds[0] - margin,
+        0,
+        mesh.min_bounds[2] - margin
+    )
+    bounds_max = Vector3(
+        mesh.max_bounds[0] + margin,
+        mesh.max_bounds[1] + flight_ceiling,
+        mesh.max_bounds[2] + margin
     )
 
-    # Save wind field if requested
-    if save_dir:
-        os.makedirs(save_dir, exist_ok=True)
-        wind_path = os.path.join(save_dir, "wind_field.npz")
-        wind_field.save_npz(wind_path)
-        print(f"   Saved wind field to {wind_path}")
+    print_step(f"Loading VTU wind data: {vtu_path}")
+    wind_field = VTULoader.load_and_normalize(
+        vtu_path,
+        scene_bounds_min=bounds_min,
+        scene_bounds_max=bounds_max,
+        resolution=config.wind.field_resolution
+    )
 
     return mesh, wind_field, bounds_min, bounds_max
 
@@ -365,29 +287,26 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  Generate mock data:
-    python -m backend.main --generate-mock --preset small
 
-  Run routing on existing data:
-    python -m backend.main --run --data-dir data/mock --output data/output/routes.json
-
-  Generate and run in one step:
-    python -m backend.main --generate-mock --run --preset demo
+  Run routing:
+    python -m backend.main --stl southken.stl --vtu internal.vtu --output routes.json
 
 Presets: demo, small, large
         """
     )
 
     parser.add_argument(
-        "--generate-mock",
-        action="store_true",
-        help="Generate mock wind and building data"
+        "--stl",
+        type=str,
+        default="southken.stl",
+        help="Path to STL file for scene geometry"
     )
 
     parser.add_argument(
-        "--run",
-        action="store_true",
-        help="Run pathfinding on scenarios"
+        "--vtu",
+        type=str,
+        default="internal.vtu",
+        help="Path to VTU file for CFD wind data"
     )
 
     parser.add_argument(
@@ -398,22 +317,9 @@ Presets: demo, small, large
     )
 
     parser.add_argument(
-        "--data-dir",
-        default="data/mock",
-        help="Directory for mock data (default: data/mock)"
-    )
-
-    parser.add_argument(
         "--output",
         default="data/output/demo_routes.json",
         help="Output JSON file (default: data/output/demo_routes.json)"
-    )
-
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed (default: 42)"
     )
 
     parser.add_argument(
@@ -423,66 +329,30 @@ Presets: demo, small, large
         help="Weight preset for routing (default: speed_priority)"
     )
 
-    parser.add_argument(
-        "--stl",
-        type=str,
-        default=None,
-        help="Path to STL file for scene geometry (replaces mock buildings)"
-    )
-
     args = parser.parse_args()
 
     # Get configuration
     config = PRESETS[args.preset]
-    config.random_seed = args.seed
-    config.output_dir = args.data_dir
     config.routing.weight_preset = args.weights
 
     print_header("Wind-Aware Drone Routing")
     print(f"Preset: {args.preset}")
-    print(f"Data directory: {args.data_dir}")
-
-    # Validate arguments
-    if not args.generate_mock and not args.run and not args.stl:
-        print("\nError: Specify --generate-mock, --run, and/or --stl")
-        parser.print_help()
-        sys.exit(1)
 
     start_time = time.time()
 
-    # Initialize data containers
-    buildings = None
-    wind_field = None
-    mesh = None
-    bounds_min = None
-    bounds_max = None
+    # Load scene
+    print_header("Loading Scene")
+    mesh, wind_field, bounds_min, bounds_max = load_stl_scene(
+        args.stl, args.vtu, config
+    )
+    buildings = BuildingCollection([])  # Mesh handles collision
 
-    # Load STL scene if specified
-    if args.stl:
-        print_header("Loading STL Scene")
-        mesh, wind_field, bounds_min, bounds_max = load_stl_scene(
-            args.stl, config, save_dir=args.data_dir
-        )
-        # Create empty building collection (mesh handles collision)
-        buildings = BuildingCollection([])
-    # Generate mock data if requested (and no STL)
-    elif args.generate_mock:
-        print_header("Generating Mock Data")
-        buildings, wind_field = generate_mock_data(config)
-        save_mock_data(buildings, wind_field, args.data_dir)
-
-    # Run scenarios if requested
-    if args.run:
-        print_header("Running Pathfinding")
-
-        # Load data if not already loaded
-        if wind_field is None:
-            buildings, wind_field = load_mock_data(args.data_dir)
-
-        run_all_scenarios(
-            config, buildings, wind_field, args.output,
-            mesh=mesh, bounds_min=bounds_min, bounds_max=bounds_max
-        )
+    # Run scenarios
+    print_header("Running Pathfinding")
+    run_all_scenarios(
+        config, buildings, wind_field, args.output,
+        mesh=mesh, bounds_min=bounds_min, bounds_max=bounds_max
+    )
 
     # Done
     elapsed = time.time() - start_time

@@ -34,11 +34,8 @@ export interface SceneData {
 
 export interface WindFieldData {
   bounds: Bounds;
-  resolution: number;
-  shape: [number, number, number];
-  downsample: number;
-  wind_vectors: [number, number, number][];
-  turbulence: number[];
+  points: [number, number, number][];
+  velocity: [number, number, number][];
 }
 
 export interface FullSceneData extends SceneData {

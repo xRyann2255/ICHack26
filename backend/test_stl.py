@@ -106,7 +106,7 @@ def test_wind_generation(mesh):
     t1 = time.time()
 
     print(f"Wind field generated in {t1-t0:.2f}s")
-    print(f"  Shape: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
+    # print(f"  Shape: {wind_field.nx}x{wind_field.ny}x{wind_field.nz}")
 
     # Sample some wind values
     test_positions = [
