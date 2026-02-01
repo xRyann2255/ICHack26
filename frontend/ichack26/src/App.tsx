@@ -101,107 +101,115 @@ function SceneLoader({ onSceneReady }: SceneLoaderProps) {
 function AppContent() {
   const [viewMode, setViewMode] = useState<ViewMode>('cinematic')
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
+  const { routePlanningMode } = useScene()
+
+  // Hide controls when in planning mode
+  const showControls = routePlanningMode === 'idle'
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }}>
 
-      <div style={viewToggleStyles.container}>
-        <button
-          style={{
-            ...viewToggleStyles.button,
-            ...(viewMode === 'cinematic' ? viewToggleStyles.active : {}),
-          }}
-          onMouseEnter={(e) => {
-            if (viewMode !== 'cinematic') {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (viewMode !== 'cinematic') {
-              e.currentTarget.style.backgroundColor = 'transparent'
-            }
-          }}
-          onClick={() => setViewMode('cinematic')}
-        >
-          Cinematic
-        </button>
-        <button
-          style={{
-            ...viewToggleStyles.button,
-            ...(viewMode === 'split' ? viewToggleStyles.active : {}),
-          }}
-          onMouseEnter={(e) => {
-            if (viewMode !== 'split') {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (viewMode !== 'split') {
-              e.currentTarget.style.backgroundColor = 'transparent'
-            }
-          }}
-          onClick={() => setViewMode('split')}
-        >
-          Split
-        </button>
-        <button
-          style={{
-            ...viewToggleStyles.button,
-            ...(viewMode === 'combined' ? viewToggleStyles.active : {}),
-          }}
-          onMouseEnter={(e) => {
-            if (viewMode !== 'combined') {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (viewMode !== 'combined') {
-              e.currentTarget.style.backgroundColor = 'transparent'
-            }
-          }}
-          onClick={() => setViewMode('combined')}
-        >
-          Combined
-        </button>
-      </div>
+      {showControls && (
+        <div style={viewToggleStyles.container}>
+          <button
+            style={{
+              ...viewToggleStyles.button,
+              ...(viewMode === 'cinematic' ? viewToggleStyles.active : {}),
+            }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'cinematic') {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'cinematic') {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }
+            }}
+            onClick={() => setViewMode('cinematic')}
+          >
+            Cinematic
+          </button>
+          <button
+            style={{
+              ...viewToggleStyles.button,
+              ...(viewMode === 'split' ? viewToggleStyles.active : {}),
+            }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'split') {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'split') {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }
+            }}
+            onClick={() => setViewMode('split')}
+          >
+            Split
+          </button>
+          <button
+            style={{
+              ...viewToggleStyles.button,
+              ...(viewMode === 'combined' ? viewToggleStyles.active : {}),
+            }}
+            onMouseEnter={(e) => {
+              if (viewMode !== 'combined') {
+                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (viewMode !== 'combined') {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }
+            }}
+            onClick={() => setViewMode('combined')}
+          >
+            Combined
+          </button>
+        </div>
+      )}
 
       {/* Wind Field Toggle - Below View Selection */}
-      <button
-        style={{
-          position: 'absolute',
-          top: '68px',
-          right: '16px',
-          padding: '10px',
-          background: visibility.windField ? 'rgba(78, 205, 196, 0.9)' : 'rgba(0, 0, 0, 0.75)',
-          border: 'none',
-          borderRadius: '8px',
-          color: '#fff',
-          cursor: 'pointer',
-          zIndex: 1000,
-          transition: 'all 0.2s ease',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          backdropFilter: 'blur(5px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.05)'
-          e.currentTarget.style.background = visibility.windField
-            ? 'rgba(78, 205, 196, 1)'
-            : 'rgba(0, 0, 0, 0.85)'
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1)'
-          e.currentTarget.style.background = visibility.windField
-            ? 'rgba(78, 205, 196, 0.9)'
-            : 'rgba(0, 0, 0, 0.75)'
-        }}
-        onClick={() => setVisibility({ ...visibility, windField: !visibility.windField })}
-        title={visibility.windField ? 'Hide Wind Field' : 'Show Wind Field'}
-      >
-        <Wind size={20} />
-      </button>
+      {showControls && (
+        <button
+          style={{
+            position: 'absolute',
+            top: '68px',
+            right: '16px',
+            padding: '10px',
+            background: visibility.windField ? 'rgba(78, 205, 196, 0.9)' : 'rgba(0, 0, 0, 0.75)',
+            border: 'none',
+            borderRadius: '8px',
+            color: '#fff',
+            cursor: 'pointer',
+            zIndex: 1000,
+            transition: 'all 0.2s ease',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)'
+            e.currentTarget.style.background = visibility.windField
+              ? 'rgba(78, 205, 196, 1)'
+              : 'rgba(0, 0, 0, 0.85)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)'
+            e.currentTarget.style.background = visibility.windField
+              ? 'rgba(78, 205, 196, 0.9)'
+              : 'rgba(0, 0, 0, 0.75)'
+          }}
+          onClick={() => setVisibility({ ...visibility, windField: !visibility.windField })}
+          title={visibility.windField ? 'Hide Wind Field' : 'Show Wind Field'}
+        >
+          <Wind size={20} />
+        </button>
+      )}
 
       {/* 3D View based on mode */}
       {viewMode === 'cinematic' ? (
