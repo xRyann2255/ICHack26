@@ -324,16 +324,16 @@ export default function MetricsPanel() {
 const styles: Record<string, React.CSSProperties> = {
   container: {
     position: 'absolute',
-    bottom: 16,
-    right: 16,
-    padding: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.49)',
     borderRadius: 14,
+    left: 30,
+    margin: 15,
+    maxHeight: '95%',
+    width: '95%',
     color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: 13,
-    minWidth: 360,
-    maxWidth: 420,
     zIndex: 1000,
     backdropFilter: 'blur(12px)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -354,7 +354,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   title: {
     margin: 0,
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: 700,
     color: '#fff',
     letterSpacing: '-0.3px',
@@ -386,12 +386,11 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(78, 205, 196, 0.25)',
   },
   summaryTitle: {
-    fontSize: 10,
+    fontSize: 14,
     color: '#4ecdc4',
     textTransform: 'uppercase',
     letterSpacing: '1px',
     fontWeight: 600,
-    marginBottom: 12,
     textAlign: 'center',
   },
   summaryStats: {
@@ -433,7 +432,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
   },
   detailLabel: {
-    fontSize: 11,
+    fontSize: 16,
     color: '#666',
   },
   detailValues: {

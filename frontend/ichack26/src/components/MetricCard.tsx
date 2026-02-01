@@ -208,15 +208,15 @@ export default function MetricCard({
 function Arrow({ direction }: { direction: 'up' | 'down' | 'equal' }) {
   if (direction === 'equal') {
     return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="#888">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="#888">
         <path d="M4 11h16v2H4z" />
       </svg>
     );
   }
   return (
     <svg
-      width="16"
-      height="16"
+      width="32"
+      height="32"
       viewBox="0 0 24 24"
       fill={direction === 'down' ? '#6bcb77' : '#ff6b6b'}
       style={{ transform: direction === 'up' ? 'rotate(180deg)' : undefined }}
@@ -248,7 +248,7 @@ function WarningIcon() {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    padding: 14,
+    padding: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderRadius: 10,
     border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -267,7 +267,7 @@ const styles: Record<string, React.CSSProperties> = {
     opacity: 0.7,
   },
   label: {
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: 600,
     color: '#888',
     textTransform: 'uppercase',
@@ -286,7 +286,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
   },
   routeLabel: {
-    fontSize: 9,
+    fontSize: 14,
     color: '#555',
     textTransform: 'uppercase',
     marginBottom: 4,
@@ -297,12 +297,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 2,
   },
   metricValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 700,
     fontFamily: 'monospace',
   },
   unit: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#666',
     marginLeft: 2,
   },

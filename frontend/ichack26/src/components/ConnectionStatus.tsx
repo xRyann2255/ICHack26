@@ -160,14 +160,17 @@ export default function ConnectionStatus() {
           <div style={styles.dataRow}>
             <span style={styles.dataLabel}>Scene:</span>
             <span style={sceneData ? styles.dataLoaded : styles.dataNotLoaded}>
-              {sceneData ? 'Loaded' : 'Not loaded'}
+              {sceneData 
+                ? 'Loaded' 
+                : 'Not loaded'
+              }
             </span>
           </div>
           <div style={styles.dataRow}>
             <span style={styles.dataLabel}>Wind:</span>
             <span style={windFieldData ? styles.dataLoaded : styles.dataNotLoaded}>
               {windFieldData
-                ? `${windFieldData.shape.join('x')} (${windFieldData.wind_vectors.length} vectors)`
+                ? 'Loaded'
                 : 'Not loaded'}
             </span>
           </div>
@@ -194,24 +197,7 @@ export default function ConnectionStatus() {
               <span style={styles.simStatusValue}>{simulation.status}</span>
             </div>
           )}
-
-          {/* Path info */}
-          {paths && (
-            <div style={styles.pathInfo}>
-              {paths.naive && (
-                <div style={styles.pathRow}>
-                  <span style={{ ...styles.pathDot, backgroundColor: '#ff6b6b' }} />
-                  <span>Naive: {paths.naive.length} points</span>
-                </div>
-              )}
-              {paths.optimized && (
-                <div style={styles.pathRow}>
-                  <span style={{ ...styles.pathDot, backgroundColor: '#4ecdc4' }} />
-                  <span>Optimized: {paths.optimized.length} points</span>
-                </div>
-              )}
-            </div>
-          )}
+          
         </div>
       )}
     </div>
