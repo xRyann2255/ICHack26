@@ -286,7 +286,7 @@ export default function ControlPanel() {
           {/* Status indicator */}
           {simulation.status !== 'idle' && (
             <div style={styles.statusIndicator}>
-              <span style={styles.statusDot(simulation.status)} />
+              <span style={getStatusDotStyle(simulation.status)} />
               <span style={styles.statusText}>
                 {simulation.status === 'paths_received'
                   ? 'Paths Received'
@@ -304,7 +304,21 @@ export default function ControlPanel() {
 // Styles
 // ============================================================================
 
-const styles: Record<string, React.CSSProperties | ((status: string) => React.CSSProperties)> = {
+const getStatusDotStyle = (status: string): React.CSSProperties => ({
+  width: 8,
+  height: 8,
+  borderRadius: '50%',
+  backgroundColor:
+    status === 'complete'
+      ? '#6bcb77'
+      : status === 'simulating'
+        ? '#ffd93d'
+        : status === 'paths_received'
+          ? '#4a9eff'
+          : '#888',
+});
+
+const styles: Record<string, React.CSSProperties> = {
   container: {
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
     borderRadius: 8,
@@ -436,19 +450,6 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 6,
   },
-  statusDot: (status: string): React.CSSProperties => ({
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    backgroundColor:
-      status === 'complete'
-        ? '#6bcb77'
-        : status === 'simulating'
-          ? '#ffd93d'
-          : status === 'paths_received'
-            ? '#4a9eff'
-            : '#888',
-  }),
   statusText: {
     fontSize: 12,
     color: '#ccc',

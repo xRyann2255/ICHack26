@@ -27,6 +27,12 @@ export interface WindFieldProps {
   minScale?: number
   /** Maximum arrow scale when scaleByVelocity is true */
   maxScale?: number
+  /** Number of streamlines (currently unused, for API compatibility) */
+  streamlineCount?: number
+  /** Integration steps for streamlines (currently unused) */
+  integrationSteps?: number
+  /** Step size for streamlines (currently unused) */
+  stepSize?: number
 }
 
 // ============================================================================

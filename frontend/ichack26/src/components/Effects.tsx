@@ -69,41 +69,57 @@ export default function Effects({
     }
   })
 
+  // Build effects array to avoid null children issues with EffectComposer
+  const effects = []
+
+  if (bloom) {
+    effects.push(
+      <Bloom
+        key="bloom"
+        intensity={bloomIntensity}
+        luminanceThreshold={bloomThreshold}
+        luminanceSmoothing={bloomSmoothing}
+        mipmapBlur
+      />
+    )
+  }
+
+  if (vignette) {
+    effects.push(
+      <Vignette
+        key="vignette"
+        darkness={vignetteDarkness}
+        offset={0.3}
+        blendFunction={BlendFunction.NORMAL}
+      />
+    )
+  }
+
+  if (chromaticAberration) {
+    effects.push(
+      <ChromaticAberration
+        key="chromatic"
+        offset={offsetRef.current}
+        blendFunction={BlendFunction.NORMAL}
+        radialModulation={false}
+        modulationOffset={0}
+      />
+    )
+  }
+
+  if (toneMapping) {
+    effects.push(
+      <ToneMapping key="tonemapping" mode={ToneMappingMode.ACES_FILMIC} />
+    )
+  }
+
+  if (effects.length === 0) {
+    return null
+  }
+
   return (
     <EffectComposer>
-      {/* Bloom - makes bright areas glow */}
-      {bloom && (
-        <Bloom
-          intensity={bloomIntensity}
-          luminanceThreshold={bloomThreshold}
-          luminanceSmoothing={bloomSmoothing}
-          mipmapBlur
-        />
-      )}
-
-      {/* Vignette - darkens edges for cinematic look */}
-      {vignette && (
-        <Vignette
-          darkness={vignetteDarkness}
-          offset={0.3}
-          blendFunction={BlendFunction.NORMAL}
-        />
-      )}
-
-      {/* Chromatic Aberration - color fringing effect */}
-      {chromaticAberration && (
-        <ChromaticAberration
-          offset={offsetRef.current}
-          blendFunction={BlendFunction.NORMAL}
-          radialModulation={false}
-          modulationOffset={0}
-        />
-      )}
-
-      {/* Tone Mapping - better color representation */}
-      {toneMapping && (
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      )}
+      {effects}
     </EffectComposer>
   )
 }

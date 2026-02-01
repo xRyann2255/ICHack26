@@ -522,25 +522,33 @@ export default function Drone({
     // Update target position
     targetPositionRef.current.set(frame.position[0], frame.position[1], frame.position[2])
 
-    // Initialize currentPositionRef on first frame or if position jumped too far (new simulation)
+    // Check if we need to snap (first frame, large jump, or new simulation)
     const distanceToTarget = currentPositionRef.current.distanceTo(targetPositionRef.current)
-    if (!isInitializedRef.current || distanceToTarget > 100) {
-      // Snap to target position immediately on first frame or large jumps
-      currentPositionRef.current.copy(targetPositionRef.current)
-      isInitializedRef.current = true
-      lastFrameTimeRef.current = frame.time
+    const isNewSimulation = lastFrameTimeRef.current !== null && frame.time < lastFrameTimeRef.current - 0.5
+    const needsSnap = !isInitializedRef.current || distanceToTarget > 50 || isNewSimulation
+
+    // Debug logging for jumping issue
+    if (distanceToTarget > 10 && isInitializedRef.current) {
+      console.warn(`[Drone] Large jump detected: ${distanceToTarget.toFixed(1)}m, frame.time=${frame.time}, current=(${currentPositionRef.current.x.toFixed(1)},${currentPositionRef.current.y.toFixed(1)},${currentPositionRef.current.z.toFixed(1)}), target=(${frame.position[0].toFixed(1)},${frame.position[1].toFixed(1)},${frame.position[2].toFixed(1)})`)
     }
 
-    // Detect if frame time went backwards (new simulation started)
-    if (lastFrameTimeRef.current !== null && frame.time < lastFrameTimeRef.current - 0.5) {
-      // New simulation - snap to new position
+    if (needsSnap) {
+      // Snap to target position immediately
       currentPositionRef.current.copy(targetPositionRef.current)
+      groupRef.current.position.copy(targetPositionRef.current)
+      isInitializedRef.current = true
+      console.log(`[Drone] Snapped to position: (${frame.position[0].toFixed(1)},${frame.position[1].toFixed(1)},${frame.position[2].toFixed(1)})`)
+    } else {
+      // Smooth interpolation for position
+      const posLerpFactor = Math.min(1, delta * 15)
+      currentPositionRef.current.lerp(targetPositionRef.current, posLerpFactor)
+      groupRef.current.position.copy(currentPositionRef.current)
     }
+
     lastFrameTimeRef.current = frame.time
 
     // Calculate target rotation from heading - Y-axis rotation only (yaw)
     // Project heading onto XZ plane to keep drone upright
-    // Reuse _headingVec to avoid per-frame allocation
     _headingVec.set(frame.heading[0], 0, frame.heading[2])
     const headingLength = _headingVec.length()
 
@@ -549,20 +557,16 @@ export default function Drone({
       _headingVec.normalize()
 
       // Calculate yaw angle from the XZ heading
-      // atan2 gives us the angle from +Z axis to the heading direction
       const yawAngle = Math.atan2(_headingVec.x, _headingVec.z)
-      // Reuse _yAxis to avoid allocation
       targetQuaternionRef.current.setFromAxisAngle(_yAxis, yawAngle)
     }
-    // If heading is invalid, keep the previous rotation (don't update targetQuaternionRef)
 
-    // Smooth interpolation for position - use faster lerp for more responsive movement
-    const posLerpFactor = Math.min(1, delta * 15)
-    currentPositionRef.current.lerp(targetPositionRef.current, posLerpFactor)
-    groupRef.current.position.copy(currentPositionRef.current)
-
-    // Smooth interpolation for rotation
-    groupRef.current.quaternion.slerp(targetQuaternionRef.current, Math.min(1, delta * 10))
+    // Smooth interpolation for rotation (or snap if needed)
+    if (needsSnap) {
+      groupRef.current.quaternion.copy(targetQuaternionRef.current)
+    } else {
+      groupRef.current.quaternion.slerp(targetQuaternionRef.current, Math.min(1, delta * 10))
+    }
   })
 
   // Don't render if no frame data

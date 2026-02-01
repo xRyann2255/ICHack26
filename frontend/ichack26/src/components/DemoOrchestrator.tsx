@@ -191,7 +191,7 @@ export default function DemoOrchestrator({
       {renderPhase()}
 
       {/* Phase indicator (development) */}
-      {process.env.NODE_ENV === 'development' && (
+      {import.meta.env.DEV && (
         <div style={styles.phaseIndicator}>
           <span>Phase: {phase}</span>
           <div style={styles.phaseButtons}>

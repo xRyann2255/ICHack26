@@ -147,7 +147,7 @@ export function FollowCamera({
   enabled = true,
 }: FollowCameraProps) {
   const { camera } = useThree()
-  const targetPositionRef = useRef(new THREE.Vector3())
+  const _targetPositionRef = useRef(new THREE.Vector3()); void _targetPositionRef;
   const currentLookAtRef = useRef(new THREE.Vector3())
 
   useFrame(() => {
