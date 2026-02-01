@@ -95,50 +95,48 @@ Connect to: `ws://localhost:8765`
 
 ### Coordinate Systems
 
-**IMPORTANT: Backend and Frontend use DIFFERENT coordinate systems!**
+**IMPORTANT: Backend and Frontend use the SAME Y-up coordinate system!**
 
-#### Backend API Coordinates
+Both systems use the same transformation from STL (Z-up) data:
+- STL (x, y, z) → Backend/Three.js (x, z, -y)
+
+#### Backend API Coordinates (Y-up, same as Three.js)
 - **X-axis**: Eastward (primary wind direction)
-- **Y-axis**: Northward
-- **Z-axis**: Upward (altitude)
-- **Origin**: bounds.min (typically [0, 0, 0])
+- **Y-axis**: Upward (altitude/height)
+- **Z-axis**: Northward (depth)
+- **Origin**: bounds.min (typically centered horizontally, grounded at Y=0)
 - **Units**: Meters for position, m/s for velocity
 
-All WebSocket messages (start/end positions, paths, frame data, building bounds) use this coordinate system.
+All WebSocket messages use this Y-up coordinate system.
 
-#### Three.js Frontend Coordinates
+#### Three.js Frontend Coordinates (Y-up)
 - **X-axis**: Eastward (same as backend)
-- **Y-axis**: Upward (altitude) - **THIS IS BACKEND Z!**
-- **Z-axis**: Southward (NEGATIVE of backend Y!) - **THIS IS -BACKEND Y!**
+- **Y-axis**: Upward (altitude) - **SAME AS BACKEND Y**
+- **Z-axis**: Northward (depth) - **SAME AS BACKEND Z**
 
 #### Coordinate Conversion
 
-**Backend → Three.js:**
+**Backend ↔ Three.js: NO CONVERSION NEEDED!**
 ```
 Three.js X = Backend X
-Three.js Y = Backend Z (altitude)
-Three.js Z = -Backend Y (negated!)
+Three.js Y = Backend Y (altitude)
+Three.js Z = Backend Z
 ```
 
-**Three.js → Backend:**
-```
-Backend X = Three.js X
-Backend Y = -Three.js Z (negated!)
-Backend Z = Three.js Y (altitude)
-```
+#### Terrain/Building Data
+**IMPORTANT:** The `buildings` array from the API is EMPTY! The terrain (including buildings) is rendered as a single STL mesh (`southken.stl`), not as individual building objects.
 
-#### Building Data
-Buildings from the API have `min` and `max` arrays in **Backend coordinates**:
-- `building.min[0]`, `building.max[0]` = X bounds (east-west)
-- `building.min[1]`, `building.max[1]` = Y bounds (north-south)
-- `building.min[2]`, `building.max[2]` = Z bounds (altitude/height)
+- Backend: Uses voxelized STL mesh for collision detection
+- Frontend: Renders STL mesh directly via Three.js
 
-To check if a Three.js point `(x, z)` is inside a building footprint:
+To get terrain height at a position, use **raycasting** or **click directly on the terrain mesh**. The click event's `point.y` gives the exact surface height.
+
 ```typescript
-const backendY = -z;  // Convert Three.js Z to Backend Y
-const inBuilding = x >= building.min[0] && x <= building.max[0] &&
-                   backendY >= building.min[1] && backendY <= building.max[1];
-const buildingHeight = building.max[2];  // Backend Z = altitude
+// In route planning, click on terrain to get position with height
+const handleTerrainClick = (event: { point: THREE.Vector3 }) => {
+  const position = [event.point.x, event.point.y, event.point.z];
+  // point.y is the actual terrain surface height at this location
+};
 ```
 
 ## Tech Stack

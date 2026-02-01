@@ -71,8 +71,14 @@ class Grid3D:
             return self.nodes[node_id]
         return None
 
-    def get_node_at_position(self, position: Vector3) -> Optional[GridNode]:
-        """Get the nearest node to a world position."""
+    def get_node_at_position(self, position: Vector3, prefer_valid: bool = True) -> Optional[GridNode]:
+        """
+        Get the nearest node to a world position.
+
+        Args:
+            position: World position to find nearest node for
+            prefer_valid: If True, search for nearest valid node within a radius
+        """
         # Calculate grid indices
         ix = round((position.x - self.bounds_min.x) / self.resolution)
         iy = round((position.y - self.bounds_min.y) / self.resolution)
@@ -83,7 +89,38 @@ class Grid3D:
         iy = max(0, min(self.ny - 1, iy))
         iz = max(0, min(self.nz - 1, iz))
 
-        return self.get_node_by_index(ix, iy, iz)
+        node = self.get_node_by_index(ix, iy, iz)
+
+        # If we want valid nodes and this one isn't valid, search nearby
+        if prefer_valid and node and not node.is_valid:
+            # Search in expanding radius for nearest valid node
+            for radius in range(1, 6):  # Search up to 5 cells away
+                best_node = None
+                best_dist = float('inf')
+
+                for dx in range(-radius, radius + 1):
+                    for dy in range(-radius, radius + 1):
+                        for dz in range(-radius, radius + 1):
+                            # Only check nodes on the "shell" of this radius
+                            if abs(dx) != radius and abs(dy) != radius and abs(dz) != radius:
+                                continue
+
+                            nix = ix + dx
+                            niy = iy + dy
+                            niz = iz + dz
+
+                            if 0 <= nix < self.nx and 0 <= niy < self.ny and 0 <= niz < self.nz:
+                                neighbor = self.get_node_by_index(nix, niy, niz)
+                                if neighbor and neighbor.is_valid:
+                                    dist = (neighbor.position - position).magnitude()
+                                    if dist < best_dist:
+                                        best_dist = dist
+                                        best_node = neighbor
+
+                if best_node:
+                    return best_node
+
+        return node
 
     def get_neighbors(self, node: GridNode) -> List[GridNode]:
         """Get all valid 26-connected neighbors of a node."""

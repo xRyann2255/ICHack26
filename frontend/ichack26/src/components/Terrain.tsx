@@ -8,6 +8,9 @@ interface TerrainProps {
   color?: string
   scale?: number
   onBoundsComputed?: (bounds: { min: number[]; max: number[] }) => void
+  onClick?: (event: { point: THREE.Vector3; stopPropagation: () => void }) => void
+  onPointerOver?: () => void
+  onPointerOut?: () => void
 }
 
 /**
@@ -23,7 +26,10 @@ function Terrain({
   url = '/models/southken.stl',
   color = '#667788',
   scale = 1,
-  onBoundsComputed
+  onBoundsComputed,
+  onClick,
+  onPointerOver,
+  onPointerOut
 }: TerrainProps) {
   // Load the STL geometry
   const geometry = useLoader(STLLoader, url)
@@ -101,6 +107,9 @@ function Terrain({
       rotation={[-Math.PI / 2, 0, 0]}
       castShadow
       receiveShadow
+      onClick={onClick}
+      onPointerOver={onPointerOver}
+      onPointerOut={onPointerOut}
     >
       <meshStandardMaterial
         color={color}

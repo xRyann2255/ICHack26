@@ -185,7 +185,7 @@ class WebSocketServer:
         mini_ke = self.wind_field.ke[::N]
         self.mini_wind_field = WindField(mini_points, mini_velocities, mini_ke)
             
-        self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
+        self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=2.0)
         # Update config bounds to match mesh
         self.config.bounds_min = (bounds_min.x, bounds_min.y, bounds_min.z)
         self.config.bounds_max = (bounds_max.x, bounds_max.y, bounds_max.z)
@@ -1007,15 +1007,10 @@ class WebSocketServer:
         if not (min_b[2] <= z <= max_b[2]):
             return f"{name} z={z} is outside bounds [{min_b[2]}, {max_b[2]}]"
 
-        # Check not inside mesh geometry
-        pos_vec = Vector3(x, y, z)
-        if self.collision_checker.point_in_building(pos_vec):
-            return f"{name} position is inside mesh geometry"
-
-        # Check not inside STL mesh (if loaded)
-        if self.mesh is not None:
-            if self.mesh.point_inside(pos_vec):
-                return f"{name} position is inside mesh geometry"
+        # Note: We no longer check if point is inside mesh geometry here.
+        # The pathfinding algorithm will handle collision avoidance.
+        # This allows users to place markers closer to buildings.
+        # A small buffer above the surface is added by the frontend.
 
         return None
 

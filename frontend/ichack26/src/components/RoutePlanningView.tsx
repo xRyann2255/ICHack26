@@ -38,11 +38,9 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [hovered, setHovered] = useState(false)
 
-  // Position is in Backend coordinates [x, y, z] where x=east, y=north, z=altitude
-  // Convert to Three.js: X=X, Y=Z(altitude), Z=-Y(negated)
-  const threeJsX = position[0]           // Backend X → Three.js X
-  const threeJsZ = -position[1]          // Backend Y → Three.js -Z (NEGATE!)
-  const groundLevel = position[2]        // Backend Z (altitude) - already calculated when clicked
+  // Backend and Three.js use the SAME Y-up coordinate system!
+  // position = [x, y (altitude), z]
+  const groundLevel = position[1]  // Y is altitude
 
   const markerHeight = 20 // Height above ground level
 
@@ -54,7 +52,7 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
   })
 
   return (
-    <group position={[threeJsX, 0, threeJsZ]}>
+    <group position={[position[0], 0, position[2]]}>
       {/* Ground ring */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundLevel + 1, 0]}>
         <ringGeometry args={[8, 12, 32]} />
@@ -109,59 +107,39 @@ function Marker({ position, color, label, pulseColor }: MarkerProps) {
 }
 
 // ============================================================================
-// Click Handler Component
+// Clickable Terrain Component (buildings + ground plane)
 // ============================================================================
 
-function ClickablePlane() {
-  const { sceneBounds, routePlanningMode, setSelectedStart, setSelectedEnd, sceneData } = useScene()
+function ClickableTerrain() {
+  const { routePlanningMode, setSelectedStart, setSelectedEnd, sceneBounds } = useScene()
   const [hovered, setHovered] = useState(false)
-  const buildings = sceneData?.buildings ?? []
-
-  // Helper to calculate ground level at a Three.js position
-  // COORDINATE CONVERSION: Three.js Z = -Backend Y (negated!)
-  const getGroundLevel = useCallback(
-    (threeX: number, threeZ: number) => {
-      // Convert Three.js coords to Backend coords
-      const backendX = threeX
-      const backendY = -threeZ  // NEGATE! Three.js Z = -Backend Y
-
-      let maxHeight = 0
-      console.log(`[GroundLevel] Three.js (${threeX.toFixed(1)}, ${threeZ.toFixed(1)}) → Backend (${backendX.toFixed(1)}, ${backendY.toFixed(1)}) checking ${buildings.length} buildings`)
-
-      for (const building of buildings) {
-        const inX = backendX >= building.min[0] && backendX <= building.max[0]
-        const inY = backendY >= building.min[1] && backendY <= building.max[1]
-        if (inX && inY) {
-          console.log(`[GroundLevel] Found building: min=(${building.min.join(',')}), max=(${building.max.join(',')}) height=${building.max[2]}`)
-          maxHeight = Math.max(maxHeight, building.max[2])  // Height is Backend Z
-        }
-      }
-      console.log(`[GroundLevel] Final height: ${maxHeight}`)
-      return maxHeight
-    },
-    [buildings]
-  )
 
   const handleClick = useCallback(
-    (event: { point: THREE.Vector3 }) => {
-      if (!sceneBounds) return
+    (event: { point: THREE.Vector3; stopPropagation: () => void }) => {
       if (routePlanningMode !== 'selecting_start' && routePlanningMode !== 'selecting_end') return
 
+      // Stop propagation to prevent multiple handlers
+      event.stopPropagation()
+
+      // event.point gives us the position on the surface
       const point = event.point
-      // Calculate ground level at clicked position (building top or floor)
-      const groundLevel = getGroundLevel(point.x, point.z)
 
-      // COORDINATE CONVERSION: Three.js → Backend
-      // Backend X = Three.js X
-      // Backend Y = -Three.js Z (NEGATED!)
-      // Backend Z = altitude (calculated from building height)
-      const backendX = point.x
-      const backendY = -point.z  // NEGATE!
-      const backendZ = groundLevel
+      // Add small offset above surface for drone clearance
+      const SURFACE_OFFSET = 1.0  // 1 meter above clicked surface
 
-      console.log(`[Click] Three.js (${point.x.toFixed(1)}, ${point.z.toFixed(1)}) → Backend [${backendX.toFixed(1)}, ${backendY.toFixed(1)}, ${backendZ.toFixed(1)}]`)
+      // Log scene bounds for comparison
+      if (sceneBounds) {
+        console.log(`[Bounds] X: [${sceneBounds.min[0].toFixed(1)}, ${sceneBounds.max[0].toFixed(1)}]`)
+        console.log(`[Bounds] Y: [${sceneBounds.min[1].toFixed(1)}, ${sceneBounds.max[1].toFixed(1)}] (height)`)
+        console.log(`[Bounds] Z: [${sceneBounds.min[2].toFixed(1)}, ${sceneBounds.max[2].toFixed(1)}]`)
+      }
 
-      const position: [number, number, number] = [backendX, backendY, backendZ]
+      // Backend and Three.js use the SAME Y-up coordinate system!
+      // Position: [x, y (altitude), z]
+      const position: [number, number, number] = [point.x, point.y + SURFACE_OFFSET, point.z]
+
+      console.log(`[Click] Three.js point: x=${point.x.toFixed(1)}, y=${point.y.toFixed(1)}, z=${point.z.toFixed(1)}`)
+      console.log(`[Click] Sending to backend: [${position[0].toFixed(1)}, ${position[1].toFixed(1)}, ${position[2].toFixed(1)}]`)
 
       if (routePlanningMode === 'selecting_start') {
         setSelectedStart(position)
@@ -169,10 +147,10 @@ function ClickablePlane() {
         setSelectedEnd(position)
       }
     },
-    [sceneBounds, routePlanningMode, setSelectedStart, setSelectedEnd, getGroundLevel]
+    [routePlanningMode, setSelectedStart, setSelectedEnd]
   )
 
-  // Change cursor when hovering over clickable area
+  // Change cursor when hovering
   useEffect(() => {
     if (routePlanningMode === 'selecting_start' || routePlanningMode === 'selecting_end') {
       document.body.style.cursor = hovered ? 'crosshair' : 'default'
@@ -182,22 +160,32 @@ function ClickablePlane() {
     }
   }, [hovered, routePlanningMode])
 
-  if (!sceneBounds) return null
-
   const isClickable = routePlanningMode === 'selecting_start' || routePlanningMode === 'selecting_end'
-  const size = Math.max(sceneBounds.size[0], sceneBounds.size[2]) * 2
+
+  // Ground plane size based on scene bounds
+  const groundSize = sceneBounds ? Math.max(sceneBounds.size[0], sceneBounds.size[2]) * 2 : 1000
 
   return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[sceneBounds.center[0], 0, sceneBounds.center[2]]}
-      onClick={isClickable ? handleClick : undefined}
-      onPointerOver={() => setHovered(true)}
-      onPointerOut={() => setHovered(false)}
-    >
-      <planeGeometry args={[size, size]} />
-      <meshBasicMaterial visible={false} />
-    </mesh>
+    <>
+      {/* Terrain mesh (buildings) */}
+      <Terrain
+        onClick={isClickable ? handleClick : undefined}
+        onPointerOver={isClickable ? () => setHovered(true) : undefined}
+        onPointerOut={isClickable ? () => setHovered(false) : undefined}
+      />
+
+      {/* Ground plane for clicking on floor areas */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0, 0]}
+        onClick={isClickable ? handleClick : undefined}
+        onPointerOver={isClickable ? () => setHovered(true) : undefined}
+        onPointerOut={isClickable ? () => setHovered(false) : undefined}
+      >
+        <planeGeometry args={[groundSize, groundSize]} />
+        <meshBasicMaterial visible={false} />
+      </mesh>
+    </>
   )
 }
 
@@ -249,9 +237,9 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
 
       <PlanningCameraController />
 
-      {/* Terrain */}
+      {/* Clickable Terrain - handles both rendering and click detection */}
       <Suspense fallback={null}>
-        <Terrain />
+        <ClickableTerrain />
       </Suspense>
 
       {/* Wind field */}
@@ -265,9 +253,6 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
           arrowSize={4.0}
         />
       )}
-
-      {/* Clickable plane for point selection - only render if bounds available */}
-      {sceneBounds && <ClickablePlane />}
 
       {/* Start marker */}
       {selectedStart && (
@@ -356,7 +341,7 @@ function PlanningOverlay() {
             <span style={styles.stepLabel}>Start Point</span>
             {selectedStart && (
               <span style={styles.stepCoords}>
-                ({selectedStart[0].toFixed(0)}, {selectedStart[1].toFixed(0)})
+                ({selectedStart[0].toFixed(0)}, {selectedStart[2].toFixed(0)})
               </span>
             )}
           </div>
@@ -374,7 +359,7 @@ function PlanningOverlay() {
             <span style={styles.stepLabel}>End Point</span>
             {selectedEnd && (
               <span style={styles.stepCoords}>
-                ({selectedEnd[0].toFixed(0)}, {selectedEnd[1].toFixed(0)})
+                ({selectedEnd[0].toFixed(0)}, {selectedEnd[2].toFixed(0)})
               </span>
             )}
           </div>
