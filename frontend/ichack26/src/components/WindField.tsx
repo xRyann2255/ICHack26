@@ -3,7 +3,7 @@
  *
  * Renders wind vectors as GPU-instanced arrows.
  * Handles millions of arrows efficiently using instanced rendering.
- * Colors indicate velocity magnitude using a blue-to-red heatmap.
+ * Colors indicate kinetic energy using a blue-to-red heatmap.
  */
 
 import { useRef, useMemo, useEffect } from 'react'
@@ -33,21 +33,45 @@ export interface WindFieldProps {
 // Color Utilities
 // ============================================================================
 
+// Color gradient stops for kinetic energy visualization
+const KE_COLOR_GRADIENT = [
+  { value: 0.0, color: new THREE.Color(0x0000ff) },  // Blue - Low energy
+  { value: 0.25, color: new THREE.Color(0x00ffff) }, // Cyan
+  { value: 0.5, color: new THREE.Color(0x00ff00) },  // Green
+  { value: 0.75, color: new THREE.Color(0xffff00) }, // Yellow
+  { value: 1.0, color: new THREE.Color(0xff0000) },  // Red - High energy
+] as const
+
 /**
- * Get heatmap color from blue (low) to red (high)
- * Smooth gradient through the spectrum
+ * Get color from kinetic energy gradient
+ * @param normalizedKE - Kinetic energy normalized to 0-1 range
  */
-function velocityToColor(normalizedVelocity: number): THREE.Color {
-  const t = Math.max(0, Math.min(1, normalizedVelocity))
-  const color = new THREE.Color()
+function kineticEnergyToColor(normalizedKE: number): THREE.Color {
+  // Apply inverse log scale to spread out low values
+  // This helps visualize the distribution when there are many low KE values
 
-  // HSL interpolation: Blue (0.66) -> Cyan -> Green -> Yellow -> Red (0.0)
-  const hue = 0.66 * (1 - t)
-  const saturation = 0.9
-  const lightness = 0.55
+  // Use a stronger log scale to weight more towards blue
+  // Square root before log makes the scale even more weighted towards low values
+  const sqrtValue = Math.sqrt(normalizedKE)
+  const logValue = Math.log10(sqrtValue * 99 + 1) / 2.15 // log10(1) = 0, log10(100) / 2 = 1
+  const t = Math.max(0, Math.min(1, logValue))
 
-  color.setHSL(hue, saturation, lightness)
-  return color
+  // Find the two gradient stops to interpolate between
+  for (let i = 0; i < KE_COLOR_GRADIENT.length - 1; i++) {
+    const stop1 = KE_COLOR_GRADIENT[i]
+    const stop2 = KE_COLOR_GRADIENT[i + 1]
+
+    if (t >= stop1.value && t <= stop2.value) {
+      // Interpolate between the two colors
+      const localT = (t - stop1.value) / (stop2.value - stop1.value)
+      const color = new THREE.Color()
+      color.lerpColors(stop1.color, stop2.color, localT)
+      return color
+    }
+  }
+
+  // Fallback to last color if beyond range
+  return KE_COLOR_GRADIENT[KE_COLOR_GRADIENT.length - 1].color.clone()
 }
 
 // ============================================================================
@@ -65,24 +89,31 @@ export default function WindField({
 }: WindFieldProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
-  // Process wind data and create 2 matrices
+  // Process wind data and create matrices and colors
   const { count, matrices, colors } = useMemo(() => {
-    const { points, velocity } = data
+    const { points, velocity, ke } = data
 
     // Validate data
-    if (!points || !velocity || points.length === 0 || velocity.length === 0) {
+    if (!points || !velocity || !ke || points.length === 0 || velocity.length === 0 || ke.length === 0) {
       console.warn('WindField: No wind data available')
       return { count: 0, matrices: new Float32Array(0), colors: new Float32Array(0) }
     }
 
-    if (points.length !== velocity.length) {
-      console.error('WindField: Points and velocity arrays must have same length')
+    if (points.length !== velocity.length || points.length !== ke.length) {
+      console.error('WindField: Points, velocity, and ke arrays must have same length')
       return { count: 0, matrices: new Float32Array(0), colors: new Float32Array(0) }
     }
 
     const numArrows = points.length
 
-    // Calculate max velocity for normalization
+    // Calculate max kinetic energy for normalization
+    let maxKE = 0
+    for (const energy of ke) {
+      if (energy > maxKE) maxKE = energy
+    }
+    maxKE = Math.min(maxKE || 1, 1)
+
+    // Also calculate velocity stats for scaling
     let maxVelocity = 0
     for (const vel of velocity) {
       const [vx, vy, vz] = vel
@@ -103,7 +134,7 @@ export default function WindField({
       if (pz < minZ) minZ = pz
       if (pz > maxZ) maxZ = pz
     }
-    console.log(`WindField: Rendering ${numArrows} arrows (max velocity: ${maxVelocity.toFixed(2)} m/s)`)
+    console.log(`WindField: Rendering ${numArrows} arrows (max velocity: ${maxVelocity.toFixed(2)} m/s, max KE: ${maxKE.toFixed(2)})`)
     console.log('WindField bounds:', {
       x: [minX.toFixed(1), maxX.toFixed(1)],
       y: [minY.toFixed(1), maxY.toFixed(1)],
@@ -128,10 +159,12 @@ export default function WindField({
     for (let i = 0; i < numArrows; i++) {
       const [px, py, pz] = points[i]
       const [vx, vy, vz] = velocity[i]
+      const kineticEnergy = ke[i]
 
       // Calculate velocity magnitude
       const speed = Math.sqrt(vx * vx + vy * vy + vz * vz)
       const normalizedSpeed = speed / maxVelocity
+      const normalizedKE = kineticEnergy / maxKE
 
       // Skip arrows with near-zero velocity
       if (speed < 0.001) {
@@ -159,7 +192,11 @@ export default function WindField({
       if (scaleByVelocity) {
         scale = arrowSize * (minScale + normalizedSpeed * (maxScale - minScale))
       }
-      tempScale.set(scale, scale * 1.5, scale)
+
+      // Scale the length (Y axis) based on kinetic energy
+      // Higher KE = longer arrows
+      const keScale = Math.min(minScale + normalizedKE * (maxScale - minScale), maxScale)
+      tempScale.set(scale, scale * 1.5 * keScale, scale)
 
       // Compose transformation matrix
       tempMatrix.compose(
@@ -169,8 +206,8 @@ export default function WindField({
       )
       tempMatrix.toArray(matricesArray, i * 16)
 
-      // Set color based on velocity magnitude
-      const color = velocityToColor(normalizedSpeed)
+      // Set color based on kinetic energy
+      const color = kineticEnergyToColor(normalizedKE)
       colorsArray[i * 3] = color.r
       colorsArray[i * 3 + 1] = color.g
       colorsArray[i * 3 + 2] = color.b
@@ -203,24 +240,52 @@ export default function WindField({
     // Set all instance colors
     const colorAttr = new THREE.InstancedBufferAttribute(colors, 3)
     mesh.instanceColor = colorAttr
+
+    console.log(`WindField: Applied ${count} instances with colors`)
   }, [count, matrices, colors])
 
   if (!visible || count === 0) return null
+
+  // Custom shader material to handle per-instance colors
+  const material = useMemo(() => {
+    return new THREE.ShaderMaterial({
+      vertexShader: `
+        varying vec3 vColor;
+        
+        void main() {
+          #ifdef USE_INSTANCING_COLOR
+            vColor = instanceColor;
+          #else
+            vColor = vec3(1.0);
+          #endif
+          
+          vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: `
+        uniform float opacity;
+        varying vec3 vColor;
+        
+        void main() {
+          gl_FragColor = vec4(vColor, opacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        opacity: { value: opacity }
+      }
+    })
+  }, [opacity])
 
   return (
     <group name="wind-field">
       <instancedMesh
         ref={meshRef}
-        args={[coneGeometry, undefined, count]}
+        args={[coneGeometry, material, count]}
         frustumCulled={false}
-      >
-        <meshBasicMaterial
-          vertexColors={true}
-          transparent={true}
-          opacity={opacity}
-          depthWrite={false}
-        />
-      </instancedMesh>
+      />
     </group>
   )
 }

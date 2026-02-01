@@ -69,6 +69,17 @@ class VTULoader:
         else:
             available = list(mesh.point_data.keys()) + list(mesh.cell_data.keys())
             raise KeyError(f"No 'U' velocity field found. Available: {available}")
+        
+        
+        # Get kinetic energy 'k' if available (for debugging)
+        if 'k' in mesh.point_data:
+            k = mesh.point_data['k']
+            print(f"  Kinetic energy 'k' found in point_data, range: [{k.min():.2f}, {k.max():.2f}]")
+        elif 'k' in mesh.cell_data:
+            k = mesh.cell_data['k']
+            print(f"  Kinetic energy 'k' found in cell_data, range: [{k.min():.2f}, {k.max():.2f}]")
+        else:
+            print("  Kinetic energy 'k' not found.")
 
         print(f"\nRaw data shapes:")
         print(f"  Points: {points.shape}")
@@ -84,13 +95,21 @@ class VTULoader:
         print(f"  Speed range: [{speed.min():.2f}, {speed.max():.2f}] m/s")
         print(f"  Mean speed: {speed.mean():.2f} m/s")
         print(f"  Non-zero vectors: {np.sum(speed > 0.01)} / {len(speed)}")
+        
+        # delete the points which start at 0,0,0 to avoid errors later on
+        non_zero_mask = ~(np.isclose(points[:,0], 0.0) & np.isclose(points[:,1], 0.0) & np.isclose(points[:,2], 0.0))
+        points = points[non_zero_mask]
+        velocity = velocity[non_zero_mask]
+        if 'k' in locals():
+            k = k[non_zero_mask]
 
-        return points, velocity
+        return points, velocity, k
 
     @staticmethod
     def convert_openfoam_to_scene(
         points: np.ndarray,
-        velocity: np.ndarray
+        velocity: np.ndarray,
+        ke: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Convert from OpenFOAM (Z-up) to scene (Y-up) coordinates.
@@ -115,12 +134,13 @@ class VTULoader:
             -velocity[:, 1],  # vy becomes -vz
         ])
 
-        return scene_points, scene_velocity
+        return scene_points, scene_velocity, ke
 
     @staticmethod
     def create_wind_field(
         points: np.ndarray,
-        velocity: np.ndarray
+        velocity: np.ndarray,
+        ke: np.ndarray
     ) -> WindField:
         """
         Create a WindField using the input points and velocities directly.
@@ -130,7 +150,7 @@ class VTULoader:
         print(f"\n=== Using existing wind points ===")
         print(f"Number of points: {len(points):,}")
 
-        return WindField(points, velocity)
+        return WindField(points, velocity, ke)
 
 
     @staticmethod
@@ -177,12 +197,12 @@ class VTULoader:
         start_time = time.time()
 
         # Step 1: Load raw VTU data (OpenFOAM coordinates)
-        points_of, velocity_of = VTULoader.load_vtu_raw(vtu_path)
+        points_of, velocity_of, ke_of = VTULoader.load_vtu_raw(vtu_path)
 
         # Step 2: Convert from OpenFOAM (Z-up) to scene (Y-up) coordinates
         print("\n=== Converting to scene coordinates (Y-up) ===")
-        points_scene, velocity_scene = VTULoader.convert_openfoam_to_scene(
-            points_of, velocity_of
+        points_scene, velocity_scene, ke_scene = VTULoader.convert_openfoam_to_scene(
+            points_of, velocity_of, ke_of
         )
 
         print(f"Scene coords bounds (before centering):")
@@ -202,7 +222,8 @@ class VTULoader:
         # Step 4: Create WindField on regular grid
         wind_field = VTULoader.create_wind_field(
             points_scene,
-            velocity_scene
+            velocity_scene,
+            ke_scene
         )
 
         elapsed = time.time() - start_time

@@ -36,6 +36,7 @@ export interface WindFieldData {
   bounds: Bounds;
   points: [number, number, number][];
   velocity: [number, number, number][];
+  ke: number[];
 }
 
 export interface FullSceneData extends SceneData {

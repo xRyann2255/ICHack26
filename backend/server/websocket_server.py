@@ -182,7 +182,8 @@ class WebSocketServer:
         N = 25
         mini_points = self.wind_field.points[::N]
         mini_velocities = self.wind_field.velocities[::N]
-        self.mini_wind_field = WindField(mini_points, mini_velocities)
+        mini_ke = self.wind_field.ke[::N]
+        self.mini_wind_field = WindField(mini_points, mini_velocities, mini_ke)
             
         self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
         # Update config bounds to match mesh
@@ -294,6 +295,7 @@ class WebSocketServer:
             },
             "points": wf.points.tolist(),
             "velocity": wf.velocities.tolist(),
+            "ke": wf.ke.tolist(),
         }
 
     async def handle_client(self, websocket: WebSocketServerProtocol) -> None:

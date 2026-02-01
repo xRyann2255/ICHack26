@@ -5,7 +5,6 @@ import SplitView from './components/SplitView'
 import DemoOrchestrator from './components/DemoOrchestrator'
 import ConnectionStatus from './components/ConnectionStatus'
 import MetricsPanel from './components/MetricsPanel'
-import CollapsibleSidebar from './components/CollapsibleSidebar'
 import { type VisibilityState, DEFAULT_VISIBILITY } from './components/VisibilityToggles'
 import { SceneProvider } from './context/SceneContext'
 import './App.css'
@@ -17,7 +16,6 @@ function App() {
 
   // UI Control States
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
-  const [windDirection, setWindDirection] = useState(0) // 0-15 index into WIND_DIRECTIONS
   const [showControls, setShowControls] = useState(true)
 
   return (
@@ -68,13 +66,28 @@ function App() {
           </button>
         </div>
 
-        {/* UI Controls (shown in non-cinematic modes) */}
-        <CollapsibleSidebar
-          visibility={visibility}
-          onVisibilityChange={setVisibility}
-          windDirection={windDirection}
-          onWindDirectionChange={setWindDirection}
-        />
+        {/* Wind Field Toggle - Bottom Left */}
+        <button
+          style={{
+            position: 'fixed',
+            bottom: '20px',
+            left: '20px',
+            padding: '12px',
+            background: visibility.windField ? '#4a9eff' : 'rgba(0,0,0,0.5)',
+            border: 'none',
+            borderRadius: '8px',
+            color: 'white',
+            fontSize: '24px',
+            cursor: 'pointer',
+            zIndex: 1000,
+            transition: 'all 0.3s ease',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+          onClick={() => setVisibility({ ...visibility, windField: !visibility.windField })}
+          title={visibility.windField ? 'Hide Wind Field' : 'Show Wind Field'}
+        >
+          💨
+        </button>
 
         {/* 3D View based on mode */}
         {viewMode === 'cinematic' ? (

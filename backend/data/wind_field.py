@@ -38,7 +38,7 @@ class WindField:
     Turbulence is zero.
     """
 
-    def __init__(self, points: np.ndarray, velocities: np.ndarray):
+    def __init__(self, points: np.ndarray, velocities: np.ndarray, ke: np.ndarray):
         """
         Args:
             points: (N,3) array of point positions
@@ -50,6 +50,7 @@ class WindField:
         self.points = points.astype(np.float32)
         self.velocities = velocities.astype(np.float32)
         self.turbulence_data = np.zeros(len(points), dtype=np.float32)
+        self.ke = ke.astype(np.float32)
 
         # Build a nearest neighbor structure (KD-tree can replace octree for simplicity)
         self._tree = cKDTree(self.points)
