@@ -69,14 +69,14 @@ export default function ConnectionStatus() {
   // Place start and end at opposite corners, at a safe flying altitude
   const { simStart, simEnd } = useMemo(() => {
     if (!sceneBounds) {
-      // Fallback defaults if no bounds loaded yet
+      // Fallback defaults if no bounds loaded yet - start at east edge, end at west edge
       return {
-        simStart: [170, 50, 170] as [number, number, number],
-        simEnd: [30, 50, 30] as [number, number, number],
+        simStart: [170, 50, 100] as [number, number, number],
+        simEnd: [30, 50, 100] as [number, number, number],
       };
     }
 
-    const { min, max, size } = sceneBounds;
+    const { min, max, center, size } = sceneBounds;
     // Flying altitude: 70% of scene height, clamped to reasonable range
     const flyAltitude = Math.min(Math.max(min[1] + size[1] * 0.7, 50), max[1] - 10);
     // Margin from edges (12% of scene size or 55m, whichever is smaller)
@@ -85,14 +85,14 @@ export default function ConnectionStatus() {
 
     return {
       simStart: [
-        max[0] - marginX,  // Near max X
+        max[0] - marginX,  // Near max X (east edge)
         flyAltitude,
-        max[2] - marginZ,  // Near max Z
+        center[2],         // Center Z (avoid corners)
       ] as [number, number, number],
       simEnd: [
-        min[0] + marginX,  // Near min X
+        min[0] + marginX,  // Near min X (west edge)
         flyAltitude,
-        min[2] + marginZ,  // Near min Z
+        center[2],         // Center Z (avoid corners)
       ] as [number, number, number],
     };
   }, [sceneBounds]);
