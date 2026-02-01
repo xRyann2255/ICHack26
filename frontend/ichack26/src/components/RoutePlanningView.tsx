@@ -5,7 +5,7 @@
  * by clicking on the 3D terrain.
  */
 
-import { useRef, useCallback, Suspense, useState, useEffect, useMemo } from 'react'
+import { useRef, useCallback, Suspense, useState, useEffect } from 'react'
 import { Canvas, useThree, useFrame } from '@react-three/fiber'
 import { OrbitControls, Environment, Html } from '@react-three/drei'
 import * as THREE from 'three'
@@ -24,43 +24,25 @@ interface RoutePlanningViewProps {
 }
 
 interface MarkerProps {
-  position: [number, number, number]
+  position: [number, number, number]  // Backend coordinates [x, y, z]
   color: string
   label: string
   pulseColor: string
-  buildings?: { min: [number, number, number]; max: [number, number, number] }[]
 }
 
 // ============================================================================
 // Marker Component
 // ============================================================================
 
-function Marker({ position, color, label, pulseColor, buildings = [] }: MarkerProps) {
+function Marker({ position, color, label, pulseColor }: MarkerProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const [hovered, setHovered] = useState(false)
 
-  // Calculate ground level based on buildings under this position
-  // Coordinate system: API uses [x, y, z] where x=east, y=north, z=altitude
-  // Three.js uses [x, y, z] where x=east, y=up, z=north
-  // position is stored as [API_x, API_y, API_z] = [Three.js_x, Three.js_z, altitude]
-  const groundLevel = useMemo(() => {
-    const apiX = position[0]  // East-west (Three.js X)
-    const apiY = position[1]  // North-south (Three.js Z)
-    let maxHeight = 0
-
-    for (const building of buildings) {
-      // Check if position is within building footprint (API X and Y axes)
-      if (
-        apiX >= building.min[0] && apiX <= building.max[0] &&  // X bounds (east-west)
-        apiY >= building.min[1] && apiY <= building.max[1]     // Y bounds (north-south)
-      ) {
-        // Building height is on API Z axis (altitude) = building.max[2]
-        maxHeight = Math.max(maxHeight, building.max[2])
-      }
-    }
-
-    return maxHeight
-  }, [position, buildings])
+  // Position is in Backend coordinates [x, y, z] where x=east, y=north, z=altitude
+  // Convert to Three.js: X=X, Y=Z(altitude), Z=-Y(negated)
+  const threeJsX = position[0]           // Backend X → Three.js X
+  const threeJsZ = -position[1]          // Backend Y → Three.js -Z (NEGATE!)
+  const groundLevel = position[2]        // Backend Z (altitude) - already calculated when clicked
 
   const markerHeight = 20 // Height above ground level
 
@@ -72,7 +54,7 @@ function Marker({ position, color, label, pulseColor, buildings = [] }: MarkerPr
   })
 
   return (
-    <group position={[position[0], 0, position[1]]}>
+    <group position={[threeJsX, 0, threeJsZ]}>
       {/* Ground ring */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, groundLevel + 1, 0]}>
         <ringGeometry args={[8, 12, 32]} />
@@ -135,18 +117,23 @@ function ClickablePlane() {
   const [hovered, setHovered] = useState(false)
   const buildings = sceneData?.buildings ?? []
 
-  // Helper to calculate ground level at a position
+  // Helper to calculate ground level at a Three.js position
+  // COORDINATE CONVERSION: Three.js Z = -Backend Y (negated!)
   const getGroundLevel = useCallback(
-    (x: number, z: number) => {
-      // x = API X (east-west), z = Three.js Z = API Y (north-south)
+    (threeX: number, threeZ: number) => {
+      // Convert Three.js coords to Backend coords
+      const backendX = threeX
+      const backendY = -threeZ  // NEGATE! Three.js Z = -Backend Y
+
       let maxHeight = 0
-      console.log(`[GroundLevel] Checking position (${x.toFixed(1)}, ${z.toFixed(1)}) against ${buildings.length} buildings`)
+      console.log(`[GroundLevel] Three.js (${threeX.toFixed(1)}, ${threeZ.toFixed(1)}) → Backend (${backendX.toFixed(1)}, ${backendY.toFixed(1)}) checking ${buildings.length} buildings`)
+
       for (const building of buildings) {
-        const inX = x >= building.min[0] && x <= building.max[0]
-        const inY = z >= building.min[1] && z <= building.max[1]
+        const inX = backendX >= building.min[0] && backendX <= building.max[0]
+        const inY = backendY >= building.min[1] && backendY <= building.max[1]
         if (inX && inY) {
           console.log(`[GroundLevel] Found building: min=(${building.min.join(',')}), max=(${building.max.join(',')}) height=${building.max[2]}`)
-          maxHeight = Math.max(maxHeight, building.max[2])  // Height is API Z
+          maxHeight = Math.max(maxHeight, building.max[2])  // Height is Backend Z
         }
       }
       console.log(`[GroundLevel] Final height: ${maxHeight}`)
@@ -164,10 +151,17 @@ function ClickablePlane() {
       // Calculate ground level at clicked position (building top or floor)
       const groundLevel = getGroundLevel(point.x, point.z)
 
-      // API expects [x, y, z] where x=east, y=north, z=altitude
-      // Three.js uses x=east, y=up, z=north
-      // So: API_x = Three.js_x, API_y = Three.js_z, API_z = altitude
-      const position: [number, number, number] = [point.x, point.z, groundLevel]
+      // COORDINATE CONVERSION: Three.js → Backend
+      // Backend X = Three.js X
+      // Backend Y = -Three.js Z (NEGATED!)
+      // Backend Z = altitude (calculated from building height)
+      const backendX = point.x
+      const backendY = -point.z  // NEGATE!
+      const backendZ = groundLevel
+
+      console.log(`[Click] Three.js (${point.x.toFixed(1)}, ${point.z.toFixed(1)}) → Backend [${backendX.toFixed(1)}, ${backendY.toFixed(1)}, ${backendZ.toFixed(1)}]`)
+
+      const position: [number, number, number] = [backendX, backendY, backendZ]
 
       if (routePlanningMode === 'selecting_start') {
         setSelectedStart(position)
@@ -238,8 +232,7 @@ function PlanningCameraController() {
 // ============================================================================
 
 function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
-  const { windFieldData, selectedStart, selectedEnd, sceneBounds, sceneData } = useScene()
-  const buildings = sceneData?.buildings ?? []
+  const { windFieldData, selectedStart, selectedEnd, sceneBounds } = useScene()
 
   return (
     <>
@@ -283,7 +276,6 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
           color="#4ecdc4"
           pulseColor="#2dcea8"
           label="START"
-          buildings={buildings}
         />
       )}
 
@@ -294,7 +286,6 @@ function PlanningSceneContent({ showWindField }: { showWindField: boolean }) {
           color="#ff6b6b"
           pulseColor="#ff4757"
           label="END"
-          buildings={buildings}
         />
       )}
 

@@ -126,6 +126,7 @@ export function SceneProvider({
 
   // Route planning functions
   const enterPlanningMode = useCallback(() => {
+    console.log('[SceneContext] Entering planning mode, resetting simulation');
     // Reset simulation state from previous run
     ws.resetSimulation();
     setRoutePlanningMode('selecting_start');

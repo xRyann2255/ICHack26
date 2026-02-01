@@ -168,6 +168,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         switch (message.type) {
           case 'scene':
             console.log('[WS] Scene data received:', message.data);
+            console.log('[WS] Buildings:', message.data.buildings?.length, 'buildings');
+            if (message.data.buildings?.length > 0) {
+              console.log('[WS] First building:', message.data.buildings[0]);
+            }
             setSceneData(message.data);
             break;
 
@@ -178,6 +182,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
           case 'full_scene':
             console.log('[WS] Full scene received');
+            console.log('[WS] Buildings:', message.data.buildings?.length, 'buildings');
+            if (message.data.buildings?.length > 0) {
+              console.log('[WS] First building:', message.data.buildings[0]);
+            }
             setSceneData(message.data);
             setWindFieldData(message.data.wind_field);
             break;

@@ -93,13 +93,53 @@ Connect to: `ws://localhost:8765`
 | `drift` | Crosswind component pushing drone off course |
 | `correction` | Heading correction being applied |
 
-### Coordinate System
+### Coordinate Systems
 
-- **Origin**: bounds.min (typically [0, 0, 0])
+**IMPORTANT: Backend and Frontend use DIFFERENT coordinate systems!**
+
+#### Backend API Coordinates
 - **X-axis**: Eastward (primary wind direction)
 - **Y-axis**: Northward
 - **Z-axis**: Upward (altitude)
+- **Origin**: bounds.min (typically [0, 0, 0])
 - **Units**: Meters for position, m/s for velocity
+
+All WebSocket messages (start/end positions, paths, frame data, building bounds) use this coordinate system.
+
+#### Three.js Frontend Coordinates
+- **X-axis**: Eastward (same as backend)
+- **Y-axis**: Upward (altitude) - **THIS IS BACKEND Z!**
+- **Z-axis**: Southward (NEGATIVE of backend Y!) - **THIS IS -BACKEND Y!**
+
+#### Coordinate Conversion
+
+**Backend → Three.js:**
+```
+Three.js X = Backend X
+Three.js Y = Backend Z (altitude)
+Three.js Z = -Backend Y (negated!)
+```
+
+**Three.js → Backend:**
+```
+Backend X = Three.js X
+Backend Y = -Three.js Z (negated!)
+Backend Z = Three.js Y (altitude)
+```
+
+#### Building Data
+Buildings from the API have `min` and `max` arrays in **Backend coordinates**:
+- `building.min[0]`, `building.max[0]` = X bounds (east-west)
+- `building.min[1]`, `building.max[1]` = Y bounds (north-south)
+- `building.min[2]`, `building.max[2]` = Z bounds (altitude/height)
+
+To check if a Three.js point `(x, z)` is inside a building footprint:
+```typescript
+const backendY = -z;  // Convert Three.js Z to Backend Y
+const inBuilding = x >= building.min[0] && x <= building.max[0] &&
+                   backendY >= building.min[1] && backendY <= building.max[1];
+const buildingHeight = building.max[2];  // Backend Z = altitude
+```
 
 ## Tech Stack
 
