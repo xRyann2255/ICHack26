@@ -260,21 +260,27 @@ function App() {
     setAppState('loading')
   }
 
-  if (appState === 'home') {
-    return <HomePage onPlanRoute={handlePlanRoute} />
-  }
-
-  // Single SceneProvider wraps both loading and ready states
-  // This preserves the WebSocket connection and scene data across the transition
+  // Wrap everything in SceneProvider so HomePage can access scene data
   return (
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
-      {appState === 'loading' ? (
+      {appState === 'home' ? (
+        <HomePageWithData onPlanRoute={handlePlanRoute} />
+      ) : appState === 'loading' ? (
         <SceneLoader onSceneReady={() => setAppState('ready')} />
       ) : (
         <AppContent />
       )}
     </SceneProvider>
   )
+}
+
+// Wrapper to pass props to HomePage
+function HomePageWithData({ onPlanRoute }: { onPlanRoute: () => void }) {
+  // For now, use a placeholder image URL
+  // User can replace with their own image later
+  const imageUrl = '/drone.png' // Or user can add their own image
+
+  return <HomePage onPlanRoute={onPlanRoute} imageUrl={imageUrl} />
 }
 
 // ============================================================================
