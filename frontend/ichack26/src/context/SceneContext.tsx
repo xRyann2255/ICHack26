@@ -4,7 +4,7 @@
  * Provides scene data, wind field, and simulation state to all components.
  */
 
-import { createContext, useContext, type ReactNode, useMemo, useCallback } from 'react';
+import { createContext, useContext, type ReactNode, useMemo, useCallback, useState } from 'react';
 import { useWebSocket, type SimulationState, type PlaybackControl, type SpeedSample } from '../hooks/useWebSocket';
 import type {
   ConnectionStatus,
@@ -18,6 +18,8 @@ import type {
 // ============================================================================
 // Context Types
 // ============================================================================
+
+export type RoutePlanningMode = 'idle' | 'selecting_start' | 'selecting_end' | 'ready' | 'calculating';
 
 export interface SceneContextValue {
   // Connection
@@ -33,6 +35,16 @@ export interface SceneContextValue {
 
   // Data fetching
   fetchSceneData: (downsample?: number) => void;
+
+  // Route planning
+  routePlanningMode: RoutePlanningMode;
+  selectedStart: [number, number, number] | null;
+  selectedEnd: [number, number, number] | null;
+  enterPlanningMode: () => void;
+  exitPlanningMode: () => void;
+  setSelectedStart: (pos: [number, number, number]) => void;
+  setSelectedEnd: (pos: [number, number, number]) => void;
+  confirmRoute: () => void;
 
   // Simulation
   simulation: SimulationState;
@@ -97,6 +109,11 @@ export function SceneProvider({
     autoConnect,
   });
 
+  // Route planning state
+  const [routePlanningMode, setRoutePlanningMode] = useState<RoutePlanningMode>('idle');
+  const [selectedStart, setSelectedStartState] = useState<[number, number, number] | null>(null);
+  const [selectedEnd, setSelectedEndState] = useState<[number, number, number] | null>(null);
+
   // Fetch scene and wind field data
   const fetchSceneData = useCallback(
     (downsample = 2) => {
@@ -105,6 +122,36 @@ export function SceneProvider({
     },
     [ws]
   );
+
+  // Route planning functions
+  const enterPlanningMode = useCallback(() => {
+    setRoutePlanningMode('selecting_start');
+    setSelectedStartState(null);
+    setSelectedEndState(null);
+  }, []);
+
+  const exitPlanningMode = useCallback(() => {
+    setRoutePlanningMode('idle');
+    setSelectedStartState(null);
+    setSelectedEndState(null);
+  }, []);
+
+  const setSelectedStart = useCallback((pos: [number, number, number]) => {
+    setSelectedStartState(pos);
+    setRoutePlanningMode('selecting_end');
+  }, []);
+
+  const setSelectedEnd = useCallback((pos: [number, number, number]) => {
+    setSelectedEndState(pos);
+    setRoutePlanningMode('ready');
+  }, []);
+
+  const confirmRoute = useCallback(() => {
+    if (selectedStart && selectedEnd) {
+      setRoutePlanningMode('calculating');
+      ws.startSimulation(selectedStart, selectedEnd, 'both');
+    }
+  }, [selectedStart, selectedEnd, ws]);
 
   // Compute scene bounds helper
   const sceneBounds = useMemo(() => {
@@ -144,6 +191,16 @@ export function SceneProvider({
       // Data fetching
       fetchSceneData,
 
+      // Route planning
+      routePlanningMode,
+      selectedStart,
+      selectedEnd,
+      enterPlanningMode,
+      exitPlanningMode,
+      setSelectedStart,
+      setSelectedEnd,
+      confirmRoute,
+
       // Simulation
       simulation: ws.simulation,
       paths: ws.simulation.paths,
@@ -162,7 +219,7 @@ export function SceneProvider({
       // Helpers
       sceneBounds,
     }),
-    [ws, fetchSceneData, sceneBounds]
+    [ws, fetchSceneData, sceneBounds, routePlanningMode, selectedStart, selectedEnd, enterPlanningMode, exitPlanningMode, setSelectedStart, setSelectedEnd, confirmRoute]
   );
 
   return <SceneContext.Provider value={value}>{children}</SceneContext.Provider>;

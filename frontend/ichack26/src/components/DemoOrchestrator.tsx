@@ -1,14 +1,15 @@
 /**
  * Demo Orchestrator Component
  *
- * Manages the two-phase demo: route creation → drone flight.
- * State machine: idle → route_creation → transition → drone_flight → complete
+ * Manages the multi-phase demo: route planning → route creation → drone flight.
+ * State machine: idle → route_planning → route_creation → transition → drone_flight → complete
  */
 
 import { useState, useEffect } from 'react'
 import RouteCreationView from './RouteCreationView'
 import DroneFlightView from './DroneFlightView'
 import TransitionOverlay from './TransitionOverlay'
+import RoutePlanningView from './RoutePlanningView'
 import MetricsPanel from './MetricsPanel'
 import { useScene } from '../context/SceneContext'
 import type { VisibilityState } from './VisibilityToggles'
@@ -19,6 +20,7 @@ import type { VisibilityState } from './VisibilityToggles'
 
 export type DemoPhase =
   | 'idle'
+  | 'route_planning'
   | 'route_creation_naive'
   | 'route_creation_optimized'
   | 'transition'
@@ -46,7 +48,7 @@ export default function DemoOrchestrator({
   transitionDuration = 2500,
   visibility,
 }: DemoOrchestratorProps) {
-  const { simulation, paths } = useScene()
+  const { simulation, paths, routePlanningMode, enterPlanningMode, exitPlanningMode } = useScene()
 
   // Demo state
   const [phase, setPhase] = useState<DemoPhase>('idle')
@@ -55,11 +57,63 @@ export default function DemoOrchestrator({
   // Wind field visibility
   const showWindField = visibility?.windField ?? true
 
-  // Start demo when paths are received or simulation starts
+  // Handle entering planning mode
+  const handlePlanRoute = () => {
+    enterPlanningMode()
+    setPhase('route_planning')
+  }
+
+  // Handle planning a new route after completion
+  const handlePlanNewRoute = () => {
+    setPhase('idle')
+    // Small delay to ensure phase is reset before entering planning mode
+    setTimeout(() => {
+      enterPlanningMode()
+      setPhase('route_planning')
+    }, 100)
+  }
+
+  // Transition to route_planning when context enters planning mode
   useEffect(() => {
-    // Start if we have paths and we're in idle phase
-    // This catches both 'paths_received' status and 'simulating' status
-    // to handle timing differences between browsers (especially Firefox)
+    if (routePlanningMode !== 'idle' && phase === 'idle') {
+      setPhase('route_planning')
+    }
+  }, [routePlanningMode, phase])
+
+  // Handle cancel during planning (when routePlanningMode goes back to idle)
+  useEffect(() => {
+    if (routePlanningMode === 'idle' && phase === 'route_planning') {
+      setPhase('idle')
+    }
+  }, [routePlanningMode, phase])
+
+  // Start route creation when paths are received after planning
+  useEffect(() => {
+    // Start if we have paths and we're in route_planning phase (after calculation)
+    if (paths && phase === 'route_planning') {
+      const isSimulationStarted = simulation.status === 'paths_received' ||
+        simulation.status === 'simulating' ||
+        simulation.status === 'complete'
+      const hasValidPaths = (paths.naive && paths.naive.length > 0) ||
+        (paths.optimized && paths.optimized.length > 0)
+
+      if (isSimulationStarted && hasValidPaths) {
+        console.log('[DemoOrchestrator] Routes calculated, starting route creation', {
+          status: simulation.status,
+          naiveLength: paths.naive?.length,
+          optimizedLength: paths.optimized?.length,
+          phase
+        })
+        // Reset planning mode before transitioning
+        exitPlanningMode()
+        setPhase('route_creation_naive')
+        setRouteProgress(0)
+      }
+    }
+  }, [simulation.status, paths, phase, exitPlanningMode])
+
+  // Legacy auto-start support (for direct simulation starts without planning)
+  useEffect(() => {
     if (autoStart && paths && phase === 'idle') {
       const isSimulationStarted = simulation.status === 'paths_received' ||
         simulation.status === 'simulating' ||
@@ -68,7 +122,7 @@ export default function DemoOrchestrator({
         (paths.optimized && paths.optimized.length > 0)
 
       if (isSimulationStarted && hasValidPaths) {
-        console.log('[DemoOrchestrator] Starting route creation', {
+        console.log('[DemoOrchestrator] Starting route creation (legacy auto-start)', {
           status: simulation.status,
           naiveLength: paths.naive?.length,
           optimizedLength: paths.optimized?.length,
@@ -140,14 +194,20 @@ export default function DemoOrchestrator({
       case 'idle':
         return (
           <div style={styles.idleContainer}>
-            <div style={styles.idleMessage}>
-              Waiting for simulation to start...
-            </div>
-            <div style={styles.idleHint}>
-              Click "Start Simulation" in the control panel
+            <div style={styles.idleContent}>
+              <div style={styles.idleTitle}>Wind-Aware Drone Routing</div>
+              <div style={styles.idleSubtitle}>
+                Compare naive vs. optimized flight paths through dynamic wind fields
+              </div>
+              <button style={styles.planRouteButton} onClick={handlePlanRoute}>
+                Plan Route
+              </button>
             </div>
           </div>
         )
+
+      case 'route_planning':
+        return <RoutePlanningView showWindField={showWindField} />
 
       case 'route_creation_naive':
         return (
@@ -193,6 +253,11 @@ export default function DemoOrchestrator({
           <>
             <DroneFlightView showWindField={showWindField} />
             <MetricsPanel />
+            <div style={styles.completeOverlay}>
+              <button style={styles.newRouteButton} onClick={handlePlanNewRoute}>
+                Plan New Route
+              </button>
+            </div>
           </>
         )
 
@@ -225,18 +290,21 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#87CEEB',
+    backgroundColor: '#1a1a2e',
   },
   idleMessage: {
     fontSize: 24,
     fontWeight: 600,
-    color: '#2c3e50',
+    color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
+    textAlign: 'center',
+    maxWidth: '500px',
+    lineHeight: 1.5,
   },
   idleHint: {
     marginTop: 12,
     fontSize: 14,
-    color: '#5a6c7d',
+    color: '#888',
     fontFamily: 'system-ui, -apple-system, sans-serif',
   },
   phaseIndicator: {
@@ -257,5 +325,25 @@ const styles: Record<string, React.CSSProperties> = {
   phaseButtons: {
     display: 'flex',
     gap: 4,
+  },
+  completeOverlay: {
+    position: 'absolute',
+    bottom: 30,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    zIndex: 1000,
+  },
+  newRouteButton: {
+    padding: '14px 32px',
+    border: 'none',
+    borderRadius: '10px',
+    backgroundColor: 'rgba(78, 205, 196, 0.9)',
+    color: '#000',
+    fontSize: '14px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
   },
 }

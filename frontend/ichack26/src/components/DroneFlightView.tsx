@@ -6,7 +6,7 @@
 
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { Grid, Environment } from '@react-three/drei'
+import { Grid } from '@react-three/drei'
 import Terrain from './Terrain'
 import WindField from './WindField'
 import FlightPath from './FlightPath'
@@ -44,10 +44,10 @@ function LoadingBox() {
 function Lighting() {
   return (
     <>
+      <ambientLight intensity={0.4} />
       <directionalLight
         position={[100, 200, 100]}
-        intensity={1.5}
-        color="#fffaf0"
+        intensity={1}
         castShadow
       />
     </>
@@ -72,12 +72,6 @@ function FlightScene({ routeType, showWindField }: FlightSceneProps) {
 
   return (
     <>
-      <Environment
-        files="/hdri/sky.hdr"
-        background
-        backgroundIntensity={1}
-        environmentIntensity={0.8}
-      />
       <Lighting />
 
       <Suspense fallback={<LoadingBox />}>
@@ -160,15 +154,17 @@ export default function DroneFlightView({
     <div style={styles.container}>
       {/* Left panel - Naive route */}
       <div style={styles.panel}>
-        <Canvas
-          camera={{
-            position: [300, 200, 300],
-            fov: 60,
-            near: 0.1,
-            far: 5000,
-          }}
-          shadows
-        >
+        <div style={{ ...styles.label, backgroundColor: 'rgba(255, 107, 107, 0.9)' }}>
+          Naive Route
+        </div>
+        <Canvas camera={{
+          position: [300, 200, 300],
+          fov: 60,
+          near: 0.1,
+          far: 5000,
+        }} shadows style={{ background: '#1a1a2e' }}>
+          <color attach="background" args={['#1a1a2e']} />
+          <fog attach="fog" args={['#1a1a2e', 200, 800]} />
           <FlightScene routeType="naive" showWindField={showWindField} />
         </Canvas>
         <MetricsOverlay
@@ -183,15 +179,17 @@ export default function DroneFlightView({
 
       {/* Right panel - Optimized route */}
       <div style={styles.panel}>
-        <Canvas
-          camera={{
-            position: [300, 200, 300],
-            fov: 60,
-            near: 0.1,
-            far: 5000,
-          }}
-          shadows
-        >
+        <div style={{ ...styles.label, backgroundColor: 'rgba(78, 205, 196, 0.9)' }}>
+          Wind-Optimized Route
+        </div>
+        <Canvas camera={{
+          position: [300, 200, 300],
+          fov: 60,
+          near: 0.1,
+          far: 5000,
+        }} shadows style={{ background: '#1a1a2e' }}>
+          <color attach="background" args={['#1a1a2e']} />
+          <fog attach="fog" args={['#1a1a2e', 200, 800]} />
           <FlightScene routeType="optimized" showWindField={showWindField} />
         </Canvas>
         <MetricsOverlay
