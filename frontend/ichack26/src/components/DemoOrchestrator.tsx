@@ -5,7 +5,7 @@
  * State machine: idle → route_creation → transition → drone_flight → complete
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import RouteCreationView from './RouteCreationView'
 import DroneFlightView from './DroneFlightView'
 import TransitionOverlay from './TransitionOverlay'
@@ -48,14 +48,30 @@ export default function DemoOrchestrator({
   const [phase, setPhase] = useState<DemoPhase>('idle')
   const [routeProgress, setRouteProgress] = useState(0)
 
-  // Start demo when paths are received
+  // Start demo when paths are received or simulation starts
   useEffect(() => {
-    if (autoStart && simulation.status === 'paths_received' && paths) {
-      console.log('[DemoOrchestrator] Paths received, starting route creation')
-      setPhase('route_creation_naive')
-      setRouteProgress(0)
+    // Start if we have paths and we're in idle phase
+    // This catches both 'paths_received' status and 'simulating' status
+    // to handle timing differences between browsers (especially Firefox)
+    if (autoStart && paths && phase === 'idle') {
+      const isSimulationStarted = simulation.status === 'paths_received' ||
+        simulation.status === 'simulating' ||
+        simulation.status === 'complete'
+      const hasValidPaths = (paths.naive && paths.naive.length > 0) ||
+        (paths.optimized && paths.optimized.length > 0)
+
+      if (isSimulationStarted && hasValidPaths) {
+        console.log('[DemoOrchestrator] Starting route creation', {
+          status: simulation.status,
+          naiveLength: paths.naive?.length,
+          optimizedLength: paths.optimized?.length,
+          phase
+        })
+        setPhase('route_creation_naive')
+        setRouteProgress(0)
+      }
     }
-  }, [autoStart, simulation.status, paths])
+  }, [autoStart, simulation.status, paths, phase])
 
   // Route creation animation - Naive
   useEffect(() => {
@@ -110,14 +126,6 @@ export default function DemoOrchestrator({
       setPhase('complete')
     }
   }, [phase, simulation.status])
-
-  // Manual phase control (for debugging)
-  const skipToPhase = useCallback((newPhase: DemoPhase) => {
-    setPhase(newPhase)
-    if (newPhase.startsWith('route_creation')) {
-      setRouteProgress(0)
-    }
-  }, [])
 
   // Render based on phase
   const renderPhase = () => {
