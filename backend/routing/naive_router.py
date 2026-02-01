@@ -271,7 +271,14 @@ class NaiveRouter:
         if not end_node or not end_node.is_valid:
             return PathResult(success=False)
 
-        return self._astar(start_node, end_node, capture_exploration)
+        result = self._astar(start_node, end_node, capture_exploration)
+
+        # Replace first and last path positions with actual requested positions
+        if result.success and result.path:
+            result.path[0] = start
+            result.path[-1] = end
+
+        return result
 
     def _astar(
         self,

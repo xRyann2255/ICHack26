@@ -116,7 +116,14 @@ class DijkstraRouter:
             return PathResult(success=False)
 
         # Run Dijkstra
-        return self._dijkstra(start_node, end_node, capture_exploration)
+        result = self._dijkstra(start_node, end_node, capture_exploration)
+
+        # Replace first and last path positions with actual requested positions
+        if result.success and result.path:
+            result.path[0] = start
+            result.path[-1] = end
+
+        return result
 
     def _dijkstra(
         self,
