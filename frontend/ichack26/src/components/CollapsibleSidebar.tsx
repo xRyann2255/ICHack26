@@ -163,7 +163,6 @@ export default function CollapsibleSidebar({
     sceneBounds,
     simulation,
     startSimulation,
-    isDataLoaded,
     connectionStatus,
     currentFrame,
     playback,
@@ -260,7 +259,6 @@ export default function CollapsibleSidebar({
 
   const canStart =
     connectionStatus === 'connected' &&
-    isDataLoaded &&
     simulation.status !== 'loading' &&
     simulation.status !== 'simulating';
 
