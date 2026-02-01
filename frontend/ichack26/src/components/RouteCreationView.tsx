@@ -254,7 +254,15 @@ export default function RouteCreationView({
       </div>
 
       {/* 3D Canvas */}
-      <Canvas shadows>
+      <Canvas
+        camera={{
+          position: [300, 200, 300],
+          fov: 60,
+          near: 0.1,
+          far: 5000,
+        }}
+        shadows
+      >
         <SceneContent
           progress={progress}
           currentRoute={currentRoute}

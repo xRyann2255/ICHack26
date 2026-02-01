@@ -164,7 +164,15 @@ export default function DroneFlightView({
         <div style={{ ...styles.label, backgroundColor: 'rgba(255, 107, 107, 0.9)' }}>
           Naive Route
         </div>
-        <Canvas shadows>
+        <Canvas
+          camera={{
+            position: [300, 200, 300],
+            fov: 60,
+            near: 0.1,
+            far: 5000,
+          }}
+          shadows
+        >
           <FlightScene routeType="naive" showWindField={showWindField} />
         </Canvas>
         <MetricsOverlay
@@ -182,7 +190,15 @@ export default function DroneFlightView({
         <div style={{ ...styles.label, backgroundColor: 'rgba(78, 205, 196, 0.9)' }}>
           Wind-Optimized Route
         </div>
-        <Canvas shadows>
+        <Canvas
+          camera={{
+            position: [300, 200, 300],
+            fov: 60,
+            near: 0.1,
+            far: 5000,
+          }}
+          shadows
+        >
           <FlightScene routeType="optimized" showWindField={showWindField} />
         </Canvas>
         <MetricsOverlay
