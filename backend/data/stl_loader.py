@@ -244,7 +244,8 @@ class STLLoader:
         filepath: str,
         convert_coords: bool = True,
         center_xy: bool = False,
-        ground_at_zero: bool = True
+        ground_at_zero: bool = True,
+        return_offset: bool = False
     ) -> List[Triangle]:
         """
         Load a binary STL file.
@@ -330,7 +331,11 @@ class STLLoader:
                     tri.v0 += offset
                     tri.v1 += offset
                     tri.v2 += offset
+        else:
+            offset = np.zeros(3)
 
+        if return_offset:
+            return triangles, offset
         return triangles
 
     @staticmethod
@@ -339,8 +344,9 @@ class STLLoader:
         convert_coords: bool = True,
         center_xy: bool = True,
         ground_at_zero: bool = True,
-        cell_size: float = 20.0
-    ) -> STLMesh:
+        cell_size: float = 20.0,
+        return_offset: bool = False
+    ):
         """
         Load an STL file and create a mesh for collision detection.
 
@@ -350,16 +356,22 @@ class STLLoader:
             center_xy: Center the mesh horizontally
             ground_at_zero: Set ground level to Y=0
             cell_size: Spatial grid cell size for acceleration
+            return_offset: If True, also return the centering offset
 
         Returns:
             STLMesh ready for collision queries
+            If return_offset=True, returns (STLMesh, offset_array)
         """
-        triangles = STLLoader.load_binary_stl(
-            filepath, convert_coords, center_xy, ground_at_zero
+        result = STLLoader.load_binary_stl(
+            filepath, convert_coords, center_xy, ground_at_zero, return_offset=True
         )
+        triangles, offset = result
         print(f"Loaded {len(triangles)} triangles from {filepath}")
+        print(f"Centering offset applied: {offset}")
         mesh = STLMesh(triangles, cell_size=cell_size)
         print(f"Mesh bounds: {mesh.min_bounds} to {mesh.max_bounds}")
+        if return_offset:
+            return mesh, offset
         return mesh
 
     @staticmethod

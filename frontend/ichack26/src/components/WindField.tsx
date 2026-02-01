@@ -91,7 +91,29 @@ export default function WindField({
     }
     maxVelocity = maxVelocity || 1
 
+    // Debug: Calculate and log wind field bounds
+    let minX = Infinity, maxX = -Infinity
+    let minY = Infinity, maxY = -Infinity
+    let minZ = Infinity, maxZ = -Infinity
+    for (const [px, py, pz] of points) {
+      if (px < minX) minX = px
+      if (px > maxX) maxX = px
+      if (py < minY) minY = py
+      if (py > maxY) maxY = py
+      if (pz < minZ) minZ = pz
+      if (pz > maxZ) maxZ = pz
+    }
     console.log(`WindField: Rendering ${numArrows} arrows (max velocity: ${maxVelocity.toFixed(2)} m/s)`)
+    console.log('WindField bounds:', {
+      x: [minX.toFixed(1), maxX.toFixed(1)],
+      y: [minY.toFixed(1), maxY.toFixed(1)],
+      z: [minZ.toFixed(1), maxZ.toFixed(1)]
+    })
+    console.log('WindField center:', {
+      x: ((minX + maxX) / 2).toFixed(1),
+      y: ((minY + maxY) / 2).toFixed(1),
+      z: ((minZ + maxZ) / 2).toFixed(1)
+    })
 
     // Prepare instance data
     const matricesArray = new Float32Array(numArrows * 16)
