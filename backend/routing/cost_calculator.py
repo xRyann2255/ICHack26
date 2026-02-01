@@ -140,18 +140,12 @@ class HeadwindCost(CostComponent):
     Cost for flying into headwind.
 
     Headwind slows the drone and increases energy consumption.
-    Tailwind provides a benefit (reduced cost).
+    Tailwind is ignored (no bonus) - the algorithm only penalizes headwind.
 
-    Modify this class to change how wind direction affects routing.
+    This asymmetric approach means:
+    - Against wind: algorithm finds paths that minimize headwind exposure
+    - With wind: algorithm finds shortest path (since no headwind to avoid)
     """
-
-    def __init__(self, tailwind_benefit: float = 0.5):
-        """
-        Args:
-            tailwind_benefit: How much tailwind reduces cost (0-1).
-                             0 = no benefit, 1 = full benefit
-        """
-        self.tailwind_benefit = tailwind_benefit
 
     @property
     def name(self) -> str:
@@ -183,9 +177,8 @@ class HeadwindCost(CostComponent):
             headwind_strength = -wind_alignment
             return headwind_strength * distance
         else:
-            # Tailwind: reduce cost (but never negative)
-            tailwind_strength = wind_alignment
-            return -self.tailwind_benefit * tailwind_strength * distance
+            # Tailwind: no bonus, just return 0 (shortest path wins)
+            return 0.0
 
 
 
@@ -231,7 +224,7 @@ class CostCalculator:
         # Default components - efficiency focused (distance + headwind only)
         self.components = components or [
             DistanceCost(),
-            HeadwindCost(tailwind_benefit=0.5),
+            HeadwindCost(),
         ]
 
         # Build component lookup
@@ -505,12 +498,6 @@ class CostCalculator:
         w_distance = self.get_weight("distance")
         w_headwind = self.get_weight("headwind")
 
-        # Get headwind parameters from component
-        tailwind_benefit = 0.5
-        for comp in self.components:
-            if comp.name == "headwind":
-                tailwind_benefit = getattr(comp, 'tailwind_benefit', 0.5)
-
         for batch_start in range(0, total_edges, batch_size):
             batch_end = min(batch_start + batch_size, total_edges)
             batch = edge_list[batch_start:batch_end]
@@ -552,12 +539,12 @@ class CostCalculator:
                 # Positive = tailwind, Negative = headwind
                 wind_alignment = np.sum(wind_at_mid * travel_dirs, axis=1)
 
-                # Headwind: cost = -alignment * distance (when alignment < 0)
-                # Tailwind: cost = -tailwind_benefit * alignment * distance (when alignment > 0)
+                # Only penalize headwind, no bonus for tailwind
+                # This way: against wind = find alternative paths, with wind = shortest path
                 headwind_costs = np.where(
                     wind_alignment < 0,
                     -wind_alignment * distances,  # Headwind penalty
-                    -tailwind_benefit * wind_alignment * distances  # Tailwind benefit (negative cost)
+                    0.0  # No tailwind bonus
                 )
                 total_costs += w_headwind * headwind_costs
 

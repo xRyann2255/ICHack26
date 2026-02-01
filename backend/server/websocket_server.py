@@ -393,21 +393,47 @@ class WebSocketServer:
         routes_to_run = []
 
         if route_type in ("naive", "both"):
-            naive_result = self.naive_router.find_path(start_vec, end_vec, capture_exploration=False)
-            if naive_result.success:
+            # Retry with increasing height if no path found
+            naive_result = None
+            current_start = start_vec
+            max_retries = 20  # Max 100m height increase
+            for attempt in range(max_retries):
+                naive_result = self.naive_router.find_path(current_start, end_vec, capture_exploration=False)
+                if naive_result.success:
+                    if attempt > 0:
+                        logger.info(f"Naive path found after raising start height by {attempt * 5}m")
+                    break
+                # Add 5m to Y (height) and retry
+                current_start = Vector3(current_start.x, current_start.y + 5, current_start.z)
+                logger.info(f"No naive path at height {current_start.y - 5}m, trying {current_start.y}m...")
+
+            if naive_result and naive_result.success:
                 naive_path = self.smoother.smooth(naive_result.path)
                 routes_to_run.append(("naive", naive_path))
             else:
-                await self.send_error(websocket, "No path found for naive route")
+                await self.send_error(websocket, "No path found for naive route (even after height adjustments)")
                 return
 
         if route_type in ("optimized", "both"):
-            wind_result = self.wind_router.find_path(start_vec, end_vec, capture_exploration=False)
-            if wind_result.success:
+            # Retry with increasing height if no path found
+            wind_result = None
+            current_start = start_vec
+            max_retries = 20  # Max 100m height increase
+            for attempt in range(max_retries):
+                wind_result = self.wind_router.find_path(current_start, end_vec, capture_exploration=False)
+                if wind_result.success:
+                    if attempt > 0:
+                        logger.info(f"Optimized path found after raising start height by {attempt * 5}m")
+                    break
+                # Add 5m to Y (height) and retry
+                current_start = Vector3(current_start.x, current_start.y + 5, current_start.z)
+                logger.info(f"No optimized path at height {current_start.y - 5}m, trying {current_start.y}m...")
+
+            if wind_result and wind_result.success:
                 wind_path = self.smoother.smooth(wind_result.path)
                 routes_to_run.append(("optimized", wind_path))
             else:
-                await self.send_error(websocket, "No path found for optimized route")
+                await self.send_error(websocket, "No path found for optimized route (even after height adjustments)")
                 return
 
         # Send paths to client
