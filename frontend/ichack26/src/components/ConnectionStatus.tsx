@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useScene } from '../context/SceneContext';
 import type { ConnectionStatus as ConnectionStatusType } from '../types/api';
-import ControlPanel from './ControlPanel';
+// ControlPanel import removed - not currently used
 
 // ============================================================================
 // Status Indicator Styles
@@ -43,9 +43,10 @@ export default function ConnectionStatus() {
     windFieldData,
     simulation,
     startSimulation,
-    paths,
+    paths: _paths,
     sceneBounds,
   } = useScene();
+  void _paths; // Reserved for future use
 
   // Auto-fetch scene data when connected
   const [autoFetched, setAutoFetched] = useState(false);

@@ -27,11 +27,20 @@ export interface WindFieldProps {
   minScale?: number
   /** Maximum arrow scale when scaleByVelocity is true */
   maxScale?: number
+  /** Number of streamlines (currently unused, for API compatibility) */
+  streamlineCount?: number
+  /** Integration steps for streamlines (currently unused) */
+  integrationSteps?: number
+  /** Step size for streamlines (currently unused) */
+  stepSize?: number
 }
 
 // ============================================================================
 // Color Utilities
 // ============================================================================
+
+// Reusable color object to avoid allocations
+const _tempColor = new THREE.Color()
 
 // Color gradient stops for kinetic energy visualization
 const KE_COLOR_GRADIENT = [
@@ -115,18 +124,16 @@ export default function WindField({
 
     // Also calculate velocity stats for scaling
     let maxVelocity = 0
-    for (const vel of velocity) {
-      const [vx, vy, vz] = vel
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz)
-      if (speed > maxVelocity) maxVelocity = speed
-    }
-    maxVelocity = maxVelocity || 1
-
-    // Debug: Calculate and log wind field bounds
     let minX = Infinity, maxX = -Infinity
     let minY = Infinity, maxY = -Infinity
     let minZ = Infinity, maxZ = -Infinity
-    for (const [px, py, pz] of points) {
+
+    for (let i = 0; i < numArrows; i++) {
+      const [vx, vy, vz] = velocity[i]
+      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz)
+      if (speed > maxVelocity) maxVelocity = speed
+
+      const [px, py, pz] = points[i]
       if (px < minX) minX = px
       if (px > maxX) maxX = px
       if (py < minY) minY = py
@@ -150,9 +157,11 @@ export default function WindField({
     const matricesArray = new Float32Array(numArrows * 16)
     const colorsArray = new Float32Array(numArrows * 3)
 
+    // Reusable objects to avoid allocations in loop
     const tempMatrix = new THREE.Matrix4()
     const tempQuaternion = new THREE.Quaternion()
     const tempScale = new THREE.Vector3()
+    const tempPosition = new THREE.Vector3()
     const upVector = new THREE.Vector3(0, 1, 0)
     const direction = new THREE.Vector3()
 
@@ -168,9 +177,11 @@ export default function WindField({
 
       // Skip arrows with near-zero velocity
       if (speed < 0.001) {
-        // Set invisible by scaling to zero
-        tempMatrix.makeScale(0, 0, 0)
-        tempMatrix.toArray(matricesArray, i * 16)
+        // Set invisible by scaling to zero - write identity-like matrix with zero scale
+        matricesArray[i * 16] = 0      // scale x
+        matricesArray[i * 16 + 5] = 0  // scale y
+        matricesArray[i * 16 + 10] = 0 // scale z
+        matricesArray[i * 16 + 15] = 1 // w
         colorsArray[i * 3] = 0
         colorsArray[i * 3 + 1] = 0
         colorsArray[i * 3 + 2] = 0
@@ -198,12 +209,8 @@ export default function WindField({
       const keScale = Math.min(minScale + normalizedKE * (maxScale - minScale), maxScale)
       tempScale.set(scale, scale * 1.5 * keScale, scale)
 
-      // Compose transformation matrix
-      tempMatrix.compose(
-        new THREE.Vector3(px, py, pz),
-        tempQuaternion,
-        tempScale
-      )
+      // Compose transformation matrix (reusing tempPosition instead of new Vector3)
+      tempMatrix.compose(tempPosition, tempQuaternion, tempScale)
       tempMatrix.toArray(matricesArray, i * 16)
 
       // Set color based on kinetic energy
@@ -213,7 +220,7 @@ export default function WindField({
       colorsArray[i * 3 + 2] = color.b
     }
 
-    return { count: numArrows, matrices: matricesArray, colors: colorsArray }
+    return { count: numArrows, matrices: matricesArray, colors: colorsArray, boundingSphere: sphere }
   }, [data, arrowSize, scaleByVelocity, minScale, maxScale])
 
   // Create cone geometry for arrows (pointing up in local space)
@@ -223,18 +230,14 @@ export default function WindField({
     return geo
   }, [])
 
-  // Apply matrices and colors to instanced mesh
+  // Apply matrices and colors to instanced mesh via direct buffer copy
   useEffect(() => {
     if (!meshRef.current || count === 0) return
 
     const mesh = meshRef.current
-    const tempMatrix = new THREE.Matrix4()
 
-    // Set all instance matrices
-    for (let i = 0; i < count; i++) {
-      tempMatrix.fromArray(matrices, i * 16)
-      mesh.setMatrixAt(i, tempMatrix)
-    }
+      // Direct buffer copy - O(1) instead of O(n) iterations
+      ; (mesh.instanceMatrix.array as Float32Array).set(matrices)
     mesh.instanceMatrix.needsUpdate = true
 
     // Set all instance colors

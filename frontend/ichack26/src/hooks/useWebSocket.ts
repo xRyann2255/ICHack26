@@ -132,7 +132,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  const lastFrameTimeRef = useRef<number>(0);
   const playbackRef = useRef(playback); // Keep ref in sync for use in callbacks
 
   // Keep playback ref in sync
@@ -157,7 +156,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
             break;
 
           case 'wind_field':
-            console.log('[WS] Wind field received:', message.data.shape);
+            console.log('[WS] Wind field received:', message.data.points?.length || 0, 'points');
             setWindFieldData(message.data);
             break;
 
@@ -193,20 +192,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
               break;
             }
 
-            // Apply speed control - skip frames if speed > 1, or throttle if speed < 1
-            const now = Date.now();
-            const frameInterval = 50; // Base interval from server (~20 FPS)
-            const adjustedInterval = frameInterval / playbackRef.current.speed;
-
-            if (now - lastFrameTimeRef.current < adjustedInterval * 0.8) {
-              // Skip this frame to slow down playback
-              if (playbackRef.current.speed < 1) {
-                break;
-              }
+            // Debug: log every 20th frame to see what's coming in
+            if (Math.floor(message.data.time * 10) % 20 === 0) {
+              console.log(`[WS] Frame ${message.route}: t=${message.data.time.toFixed(2)}, pos=(${message.data.position[0].toFixed(1)},${message.data.position[1].toFixed(1)},${message.data.position[2].toFixed(1)})`);
             }
-            lastFrameTimeRef.current = now;
 
-            // Update current frame for the appropriate route
+            // Update current frame for the appropriate route (removed throttling that could cause issues)
             setSimulation((prev) => ({
               ...prev,
               currentFrame: {

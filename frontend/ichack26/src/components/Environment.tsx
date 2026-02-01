@@ -236,24 +236,18 @@ export default function Environment({
           <Cloud
             opacity={0.5}
             speed={0.2}
-            width={100}
-            depth={10}
             segments={20}
           />
           <Cloud
             position={[-100, 20, 50]}
             opacity={0.4}
             speed={0.15}
-            width={80}
-            depth={8}
             segments={15}
           />
           <Cloud
             position={[100, -10, -50]}
             opacity={0.4}
             speed={0.25}
-            width={120}
-            depth={12}
             segments={18}
           />
         </group>

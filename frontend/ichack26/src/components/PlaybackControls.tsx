@@ -44,7 +44,8 @@ export default function PlaybackControls({
   onPlaybackChange,
   onRestart,
 }: PlaybackControlsProps) {
-  const { simulation, currentFrame, startSimulation, sceneBounds, paths } = useScene();
+  const { simulation, currentFrame, startSimulation: _startSimulation, sceneBounds: _sceneBounds, paths } = useScene();
+  void _startSimulation; void _sceneBounds; // Reserved for future use
 
   const { isPlaying, speed } = playbackState;
 
@@ -66,8 +67,9 @@ export default function PlaybackControls({
     currentFrame.naive?.time || currentFrame.optimized?.time || 0;
 
   // Check if simulation is active
-  const isSimulationActive =
+  const _isSimulationActive =
     simulation.status === 'simulating' || simulation.status === 'paths_received';
+  void _isSimulationActive; // Reserved for future use
   const isComplete = simulation.status === 'complete';
 
   // Calculate progress

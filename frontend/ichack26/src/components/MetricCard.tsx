@@ -48,7 +48,7 @@ function useAnimatedCounter(
 
   useEffect(() => {
     let animationFrame: number;
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const animate = (timestamp: number) => {
       if (startTimeRef.current === null) {
@@ -113,7 +113,7 @@ export default function MetricCard({
   // Format improvement text
   const getImprovementText = useCallback(() => {
     if (isEqual) return 'Same';
-    const absDiff = Math.abs(diff);
+    const _absDiff = Math.abs(diff); void _absDiff;
     const absPercent = Math.abs(percentDiff);
 
     if (lowerIsBetter) {

@@ -33,7 +33,7 @@ export default function SplitView({
   visibility,
 }: SplitViewProps) {
   // Camera sync state
-  const [masterCamera, setMasterCamera] = useState<THREE.Camera | null>(null)
+  const [, setMasterCamera] = useState<THREE.Camera | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
 
   // Handle camera changes from the control panel

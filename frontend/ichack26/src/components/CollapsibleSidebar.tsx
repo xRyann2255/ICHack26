@@ -62,25 +62,6 @@ const DEFAULT_PRESETS: RoutePreset[] = [
   },
 ];
 
-// ============================================================================
-// Toggle Configuration
-// ============================================================================
-
-interface ToggleConfig {
-  key: keyof VisibilityState;
-  label: string;
-  color: string;
-}
-
-const VISIBILITY_TOGGLES: ToggleConfig[] = [
-  { key: 'terrain', label: 'Terrain', color: '#667788' },
-  { key: 'windField', label: 'Wind Field', color: '#4a9eff' },
-  { key: 'naivePath', label: 'Naive Path', color: '#ff6b6b' },
-  { key: 'optimizedPath', label: 'Optimized Path', color: '#4ecdc4' },
-  { key: 'naiveDrone', label: 'Naive Drone', color: '#ff6b6b' },
-  { key: 'optimizedDrone', label: 'Optimized Drone', color: '#4ecdc4' },
-  { key: 'effects', label: 'Effects', color: '#bf7fff' },
-];
 
 // ============================================================================
 // Speed Options
@@ -190,7 +171,8 @@ export default function CollapsibleSidebar({
   // Control Panel state
   const [startPos, setStartPos] = useState<Position>({ x: 180, y: 180, z: 50 });
   const [endPos, setEndPos] = useState<Position>({ x: 20, y: 20, z: 50 });
-  const [routeType, setRouteType] = useState<RouteType>('both');
+  const [routeType, _setRouteType] = useState<RouteType>('both');
+  void _setRouteType; // Reserved for future use
 
   // Compute dynamic presets based on scene bounds
   const presets = sceneBounds
@@ -237,13 +219,14 @@ export default function CollapsibleSidebar({
     );
   }, [startSimulation, startPos, endPos, routeType]);
 
-  // Visibility toggle handler
-  const handleVisibilityToggle = useCallback(
+  // Visibility toggle handler (reserved for future use)
+  const _handleVisibilityToggle = useCallback(
     (key: keyof VisibilityState) => {
       onVisibilityChange({ ...visibility, [key]: !visibility[key] });
     },
     [visibility, onVisibilityChange]
   );
+  void _handleVisibilityToggle;
 
   // Playback handlers - using context
   const handlePlayPause = useCallback(() => {
@@ -577,13 +560,6 @@ function PlaybackIcon() {
   );
 }
 
-function VisibilityIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" />
-    </svg>
-  );
-}
 
 function PlayIcon() {
   return (
