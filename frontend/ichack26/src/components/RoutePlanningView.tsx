@@ -125,7 +125,7 @@ function ClickableTerrain() {
       const point = event.point
 
       // Add small offset above surface for drone clearance
-      const SURFACE_OFFSET = 1.0  // 1 meter above clicked surface
+      const SURFACE_OFFSET = 5.0  // 5 meters above clicked surface
 
       // Log scene bounds for comparison
       if (sceneBounds) {

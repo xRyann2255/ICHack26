@@ -185,7 +185,7 @@ class WebSocketServer:
         mini_ke = self.wind_field.ke[::N]
         self.mini_wind_field = WindField(mini_points, mini_velocities, mini_ke)
             
-        self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=2.0)
+        self.collision_checker = MeshCollisionChecker(self.mesh, voxel_size=5.0)
         # Update config bounds to match mesh
         self.config.bounds_min = (bounds_min.x, bounds_min.y, bounds_min.z)
         self.config.bounds_max = (bounds_max.x, bounds_max.y, bounds_max.z)
