@@ -35,6 +35,12 @@ export interface WindFieldProps {
   particleCount?: number
   /** Speed multiplier for particle animation */
   particleSpeed?: number
+  /** Base interval between arrows (in number of points along streamline) */
+  arrowInterval?: number
+  /** Add extra arrows at high-curvature (direction change) points */
+  curvatureAwareArrows?: boolean
+  /** Threshold angle (radians) to consider as high curvature for extra arrows */
+  curvatureThreshold?: number
 }
 
 interface StreamlineData {
@@ -304,47 +310,118 @@ interface ArrowHeadsProps {
   streamlines: StreamlineData[]
   arrowSize: number
   opacity: number
+  /** Base interval between arrows (in number of points) */
+  arrowInterval?: number
+  /** Add extra arrows at high-curvature points */
+  curvatureAware?: boolean
+  /** Threshold angle (radians) to consider as high curvature */
+  curvatureThreshold?: number
 }
 
-function ArrowHeads({ streamlines, arrowSize, opacity }: ArrowHeadsProps) {
+/**
+ * Calculate curvature at a point on the streamline
+ * Returns angle in radians between incoming and outgoing directions
+ */
+function calculateCurvature(
+  points: THREE.Vector3[],
+  index: number
+): number {
+  if (index <= 0 || index >= points.length - 1) return 0
+
+  const prev = points[index - 1]
+  const curr = points[index]
+  const next = points[index + 1]
+
+  const dir1 = new THREE.Vector3().subVectors(curr, prev).normalize()
+  const dir2 = new THREE.Vector3().subVectors(next, curr).normalize()
+
+  // Angle between directions (0 = straight, PI = 180 degree turn)
+  const dot = Math.max(-1, Math.min(1, dir1.dot(dir2)))
+  return Math.acos(dot)
+}
+
+function ArrowHeads({
+  streamlines,
+  arrowSize,
+  opacity,
+  arrowInterval = 3,
+  curvatureAware = true,
+  curvatureThreshold = 0.15 // ~8.5 degrees
+}: ArrowHeadsProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
 
   const { count, matrices, colors } = useMemo(() => {
-    const numArrows = streamlines.length
-    const matricesArray = new Float32Array(numArrows * 16)
-    const colorsArray = new Float32Array(numArrows * 3)
+    // First pass: count total arrows needed
+    let totalArrows = 0
+    const arrowData: { position: THREE.Vector3; direction: THREE.Vector3; velocity: number }[] = []
+
+    const tempDir = new THREE.Vector3()
+
+    streamlines.forEach((streamline) => {
+      const { points, velocities } = streamline
+      if (points.length < 2) return
+
+      let lastArrowIndex = -arrowInterval // Allow first arrow at start
+
+      for (let i = 0; i < points.length; i++) {
+        const curvature = calculateCurvature(points, i)
+        const isHighCurvature = curvatureAware && curvature > curvatureThreshold
+        const distFromLastArrow = i - lastArrowIndex
+
+        // Place arrow if:
+        // 1. We've traveled arrowInterval points since last arrow, OR
+        // 2. This is a high-curvature point (and we're at least 1 point from last arrow), OR
+        // 3. This is the last point
+        const shouldPlaceArrow =
+          distFromLastArrow >= arrowInterval ||
+          (isHighCurvature && distFromLastArrow >= 1) ||
+          i === points.length - 1
+
+        if (shouldPlaceArrow && i > 0) {
+          // Calculate direction from previous point
+          tempDir.subVectors(points[i], points[i - 1]).normalize()
+
+          // Skip if direction is too small (stationary)
+          if (tempDir.length() > 0.01) {
+            arrowData.push({
+              position: points[i].clone(),
+              direction: tempDir.clone(),
+              velocity: velocities[i] || velocities[velocities.length - 1]
+            })
+            lastArrowIndex = i
+            totalArrows++
+          }
+        }
+      }
+    })
+
+    const matricesArray = new Float32Array(totalArrows * 16)
+    const colorsArray = new Float32Array(totalArrows * 3)
 
     const tempMatrix = new THREE.Matrix4()
-    const tempPosition = new THREE.Vector3()
     const tempQuaternion = new THREE.Quaternion()
     const tempScale = new THREE.Vector3(arrowSize, arrowSize * 1.5, arrowSize)
     const upVector = new THREE.Vector3(0, 1, 0)
 
-    streamlines.forEach((streamline, i) => {
-      const { points, velocities, direction } = streamline
-      const endPoint = points[points.length - 1]
-      const endVelocity = velocities[velocities.length - 1]
-
-      tempPosition.copy(endPoint)
-
+    arrowData.forEach((arrow, i) => {
       // Rotate cone to point in wind direction
-      if (direction.length() > 0.01) {
-        tempQuaternion.setFromUnitVectors(upVector, direction)
+      if (arrow.direction.length() > 0.01) {
+        tempQuaternion.setFromUnitVectors(upVector, arrow.direction)
       } else {
         tempQuaternion.identity()
       }
 
-      tempMatrix.compose(tempPosition, tempQuaternion, tempScale)
+      tempMatrix.compose(arrow.position, tempQuaternion, tempScale)
       tempMatrix.toArray(matricesArray, i * 16)
 
-      const color = velocityToColor(endVelocity)
+      const color = velocityToColor(arrow.velocity)
       colorsArray[i * 3] = color.r
       colorsArray[i * 3 + 1] = color.g
       colorsArray[i * 3 + 2] = color.b
     })
 
-    return { count: numArrows, matrices: matricesArray, colors: colorsArray }
-  }, [streamlines, arrowSize])
+    return { count: totalArrows, matrices: matricesArray, colors: colorsArray }
+  }, [streamlines, arrowSize, arrowInterval, curvatureAware, curvatureThreshold])
 
   // Create cone geometry for arrows
   const coneGeometry = useMemo(() => {
@@ -523,15 +600,18 @@ function AnimatedStreamlineParticles({
 export default function WindField({
   data,
   visible = true,
-  streamlineCount = 400,
-  integrationSteps = 25,
-  stepSize = 5.0,
+  streamlineCount = 1500,
+  integrationSteps = 40,
+  stepSize = 4.0,
   opacity = 0.85,
-  arrowSize = 3.0,
-  curveSegments = 5,
+  arrowSize = 2.0,
+  curveSegments = 8,
   animatedParticles = true,
-  particleCount = 300,
+  particleCount = 500,
   particleSpeed = 1.0,
+  arrowInterval = 4,
+  curvatureAwareArrows = true,
+  curvatureThreshold = 0.12,
 }: WindFieldProps) {
 
   // Generate all streamlines
@@ -578,7 +658,14 @@ export default function WindField({
   return (
     <group name="wind-streamlines">
       <StreamlineLines streamlines={streamlines} opacity={opacity} curveSegments={curveSegments} />
-      <ArrowHeads streamlines={streamlines} arrowSize={arrowSize} opacity={opacity} />
+      <ArrowHeads
+        streamlines={streamlines}
+        arrowSize={arrowSize}
+        opacity={opacity}
+        arrowInterval={arrowInterval}
+        curvatureAware={curvatureAwareArrows}
+        curvatureThreshold={curvatureThreshold}
+      />
       {animatedParticles && (
         <AnimatedStreamlineParticles
           streamlines={streamlines}
