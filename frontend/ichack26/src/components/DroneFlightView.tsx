@@ -154,9 +154,6 @@ export default function DroneFlightView({
     <div style={styles.container}>
       {/* Left panel - Naive route */}
       <div style={styles.panel}>
-        <div style={{ ...styles.label, backgroundColor: 'rgba(255, 107, 107, 0.9)' }}>
-          Naive Route
-        </div>
         <Canvas camera={{
           position: [300, 200, 300],
           fov: 60,
@@ -179,9 +176,6 @@ export default function DroneFlightView({
 
       {/* Right panel - Optimized route */}
       <div style={styles.panel}>
-        <div style={{ ...styles.label, backgroundColor: 'rgba(78, 205, 196, 0.9)' }}>
-          Wind-Optimized Route
-        </div>
         <Canvas camera={{
           position: [300, 200, 300],
           fov: 60,
