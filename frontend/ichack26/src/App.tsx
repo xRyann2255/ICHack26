@@ -1,13 +1,12 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import Scene from './components/Scene'
 import SplitView from './components/SplitView'
 import DemoOrchestrator from './components/DemoOrchestrator'
 import ConnectionStatus from './components/ConnectionStatus'
 import MetricsPanel from './components/MetricsPanel'
-import ControlPanel from './components/ControlPanel'
-import PlaybackControls, { type PlaybackState } from './components/PlaybackControls'
-import VisibilityToggles, { type VisibilityState, DEFAULT_VISIBILITY } from './components/VisibilityToggles'
+import CollapsibleSidebar from './components/CollapsibleSidebar'
+import { type VisibilityState, DEFAULT_VISIBILITY } from './components/VisibilityToggles'
 import { SceneProvider } from './context/SceneContext'
 import './App.css'
 
@@ -18,20 +17,6 @@ function App() {
 
   // UI Control States
   const [visibility, setVisibility] = useState<VisibilityState>(DEFAULT_VISIBILITY)
-  const [playback, setPlayback] = useState<PlaybackState>({
-    isPlaying: true,
-    speed: 1,
-  })
-
-  // Show/hide UI panels
-  const [showControls, setShowControls] = useState(true)
-
-  // Handle restart simulation
-  const handleRestart = useCallback(() => {
-    // Restart is handled by the ControlPanel component
-    // This callback can be used for additional reset logic if needed
-    setPlayback({ isPlaying: true, speed: 1 })
-  }, [])
 
   return (
     <SceneProvider wsUrl="ws://localhost:8765" autoConnect={true}>
@@ -39,7 +24,7 @@ function App() {
         {/* WebSocket connection status overlay */}
         <ConnectionStatus />
 
-        {/* View mode toggle */}
+        {/* View mode toggle
         <div style={viewToggleStyles.container}>
           <button
             style={{
@@ -68,7 +53,7 @@ function App() {
           >
             Combined
           </button>
-          {/* Toggle controls visibility */}
+          {/* Toggle controls visibility
           <button
             style={{
               ...viewToggleStyles.button,
@@ -81,27 +66,13 @@ function App() {
             {showControls ? 'Hide UI' : 'Show UI'}
           </button>
         </div>
+         */}
 
         {/* UI Controls (shown in non-cinematic modes) */}
-        {showControls && viewMode !== 'cinematic' && (
-          <>
-            {/* Control Panel - bottom left */}
-            <ControlPanel />
-
-            {/* Visibility Toggles - top right (next to view toggles) */}
-            <VisibilityToggles
-              visibility={visibility}
-              onChange={setVisibility}
-            />
-
-            {/* Playback Controls - bottom center */}
-            <PlaybackControls
-              playbackState={playback}
-              onPlaybackChange={setPlayback}
-              onRestart={handleRestart}
-            />
-          </>
-        )}
+        <CollapsibleSidebar
+          visibility={visibility}
+          onVisibilityChange={setVisibility}
+        />
 
         {/* 3D View based on mode */}
         {viewMode === 'cinematic' ? (

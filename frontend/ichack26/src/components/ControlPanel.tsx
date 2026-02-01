@@ -306,16 +306,11 @@ export default function ControlPanel() {
 
 const styles: Record<string, React.CSSProperties | ((status: string) => React.CSSProperties)> = {
   container: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     borderRadius: 10,
     color: '#fff',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontSize: 13,
-    minWidth: 280,
-    maxWidth: 320,
     zIndex: 1000,
     backdropFilter: 'blur(10px)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -339,6 +334,9 @@ const styles: Record<string, React.CSSProperties | ((status: string) => React.CS
   },
   content: {
     padding: 16,
+    maxHeight: 'calc(100vh - 100px)',
+    overflowY: 'auto',
+    overflowX: 'hidden',
   },
   section: {
     marginBottom: 16,

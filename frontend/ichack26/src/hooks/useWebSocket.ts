@@ -47,6 +47,11 @@ export interface UseWebSocketOptions {
   onError?: (error: string) => void;
 }
 
+export interface PlaybackControl {
+  isPaused: boolean;
+  speed: number;
+}
+
 export interface UseWebSocketReturn {
   // Connection state
   status: ConnectionStatus;
@@ -58,6 +63,11 @@ export interface UseWebSocketReturn {
 
   // Simulation state
   simulation: SimulationState;
+
+  // Playback control
+  playback: PlaybackControl;
+  setPlaybackPaused: (paused: boolean) => void;
+  setPlaybackSpeed: (speed: number) => void;
 
   // Actions
   connect: () => void;
@@ -115,10 +125,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   // Simulation state
   const [simulation, setSimulation] = useState<SimulationState>(INITIAL_SIMULATION_STATE);
 
+  // Playback control state
+  const [playback, setPlayback] = useState<PlaybackControl>({ isPaused: false, speed: 1 });
+
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
+  const lastFrameTimeRef = useRef<number>(0);
+  const playbackRef = useRef(playback); // Keep ref in sync for use in callbacks
+
+  // Keep playback ref in sync
+  playbackRef.current = playback;
 
   // ============================================================================
   // Message Handler
@@ -170,6 +188,24 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
             break;
 
           case 'frame':
+            // Skip frame updates if paused
+            if (playbackRef.current.isPaused) {
+              break;
+            }
+
+            // Apply speed control - skip frames if speed > 1, or throttle if speed < 1
+            const now = Date.now();
+            const frameInterval = 50; // Base interval from server (~20 FPS)
+            const adjustedInterval = frameInterval / playbackRef.current.speed;
+
+            if (now - lastFrameTimeRef.current < adjustedInterval * 0.8) {
+              // Skip this frame to slow down playback
+              if (playbackRef.current.speed < 1) {
+                break;
+              }
+            }
+            lastFrameTimeRef.current = now;
+
             // Update current frame for the appropriate route
             setSimulation((prev) => ({
               ...prev,
@@ -354,6 +390,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     send({ type: 'ping' });
   }, [send]);
 
+  // Playback control functions
+  const setPlaybackPaused = useCallback((paused: boolean) => {
+    setPlayback((prev) => ({ ...prev, isPaused: paused }));
+  }, []);
+
+  const setPlaybackSpeed = useCallback((speed: number) => {
+    setPlayback((prev) => ({ ...prev, speed }));
+  }, []);
+
   // ============================================================================
   // Effects
   // ============================================================================
@@ -379,6 +424,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     sceneData,
     windFieldData,
     simulation,
+    playback,
+    setPlaybackPaused,
+    setPlaybackSpeed,
     connect,
     disconnect,
     send,

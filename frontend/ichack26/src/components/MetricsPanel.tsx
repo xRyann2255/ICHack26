@@ -325,7 +325,7 @@ const styles: Record<string, React.CSSProperties> = {
   container: {
     position: 'absolute',
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.49)',
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
     borderRadius: 14,
     left: 30,
     margin: 15,

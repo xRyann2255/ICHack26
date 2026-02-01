@@ -5,7 +5,7 @@
  */
 
 import { createContext, useContext, type ReactNode, useMemo, useCallback } from 'react';
-import { useWebSocket, type SimulationState } from '../hooks/useWebSocket';
+import { useWebSocket, type SimulationState, type PlaybackControl } from '../hooks/useWebSocket';
 import type {
   ConnectionStatus,
   SceneData,
@@ -52,6 +52,11 @@ export interface SceneContextValue {
     end: [number, number, number],
     routeType?: 'naive' | 'optimized' | 'both'
   ) => void;
+
+  // Playback control
+  playback: PlaybackControl;
+  setPlaybackPaused: (paused: boolean) => void;
+  setPlaybackSpeed: (speed: number) => void;
 
   // Computed helpers
   sceneBounds: {
@@ -143,6 +148,11 @@ export function SceneProvider({
 
       // Simulation control
       startSimulation: ws.startSimulation,
+
+      // Playback control
+      playback: ws.playback,
+      setPlaybackPaused: ws.setPlaybackPaused,
+      setPlaybackSpeed: ws.setPlaybackSpeed,
 
       // Helpers
       sceneBounds,

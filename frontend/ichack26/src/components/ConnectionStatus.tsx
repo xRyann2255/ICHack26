@@ -7,6 +7,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useScene } from '../context/SceneContext';
 import type { ConnectionStatus as ConnectionStatusType } from '../types/api';
+import ControlPanel from './ControlPanel';
 
 // ============================================================================
 // Status Indicator Styles
@@ -20,9 +21,9 @@ const STATUS_COLORS: Record<ConnectionStatusType, string> = {
 };
 
 const STATUS_LABELS: Record<ConnectionStatusType, string> = {
-  disconnected: 'Disconnected',
+  disconnected: 'Tracer Disconnected',
   connecting: 'Connecting...',
-  connected: 'Connected',
+  connected: 'Tracer Connected',
   error: 'Error',
 };
 
@@ -192,15 +193,20 @@ export default function ConnectionStatus() {
 
           {/* Simulation status */}
           {simulation.status !== 'idle' && (
-            <div style={styles.simStatus}>
-              <span style={styles.dataLabel}>Status:</span>
-              <span style={styles.simStatusValue}>{simulation.status}</span>
+            <div style={styles.activeSim}>
+              <div style={styles.simStatus}>
+                <span style={styles.dataLabel}>Status:</span>
+                <span style={styles.simStatusValue}>{simulation.status}</span>
+              </div>
             </div>
+            
           )}
-          
+           
         </div>
       )}
+     
     </div>
+    
   );
 }
 
@@ -236,6 +242,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   statusLabel: {
     fontWeight: 600,
+  },
+  activeSim: {
+    alignContent: 'center',
+    gap: 10
   },
   error: {
     color: '#ff6b6b',
@@ -312,6 +322,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     marginTop: 8,
+    marginBottom: 8,
     fontSize: 12,
   },
   simStatusValue: {
