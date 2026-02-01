@@ -209,7 +209,10 @@ export default function WindField({
       const keScale = Math.min(minScale + normalizedKE * (maxScale - minScale), maxScale)
       tempScale.set(scale, scale * 1.5 * keScale, scale)
 
-      // Compose transformation matrix (reusing tempPosition instead of new Vector3)
+      // Set position
+      tempPosition.set(px, py, pz)
+
+      // Compose transformation matrix
       tempMatrix.compose(tempPosition, tempQuaternion, tempScale)
       tempMatrix.toArray(matricesArray, i * 16)
 
@@ -220,7 +223,7 @@ export default function WindField({
       colorsArray[i * 3 + 2] = color.b
     }
 
-    return { count: numArrows, matrices: matricesArray, colors: colorsArray, boundingSphere: sphere }
+    return { count: numArrows, matrices: matricesArray, colors: colorsArray }
   }, [data, arrowSize, scaleByVelocity, minScale, maxScale])
 
   // Create cone geometry for arrows (pointing up in local space)
